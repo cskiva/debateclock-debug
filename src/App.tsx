@@ -9,24 +9,37 @@ function slugify(text: string) {
     .substring(0, 50); // limit length
 }
 
-
 function App() {
   const [topic, setTopic] = useState("");
   const [position, setPosition] = useState("for");
   const [links, setLinks] = useState<{ invite: string; delivery: string } | null>(null);
-
   const navigate = useNavigate();
 
   function handleStart() {
-  const baseSlug = slugify(topic);
-  const roomId = baseSlug || Math.random().toString(36).substring(2, 8);
+    const baseSlug = slugify(topic);
+    const roomId = baseSlug || Math.random().toString(36).substring(2, 8);
 
-  setLinks({
-    invite: `/join/${roomId}`,
-    delivery: `/watch/${roomId}`,
-  });
-}
+    setLinks({
+      invite: `/join/${roomId}`,
+      delivery: `/watch/${roomId}`,
+    });
 
+    // Store topic and position for use later
+    sessionStorage.setItem("debate-topic", topic);
+    sessionStorage.setItem("debate-position", position);
+  }
+
+  function handleNext() {
+    if (!links) return;
+
+    const roomId = links.invite.split("/").pop();
+    navigate(`/get-ready/${roomId}`, {
+      state: {
+        topic: sessionStorage.getItem("debate-topic") || "",
+        position: sessionStorage.getItem("debate-position") || "",
+      },
+    });
+  }
 
   return (
     <div style={{ padding: "2rem" }}>
@@ -54,31 +67,31 @@ function App() {
         </select>
       </label>
 
-     <button onClick={handleStart}>Host Debate</button>
-{links && (
-  <div style={{ marginTop: "1rem" }}>
-    <div style={{ marginBottom: "1rem" }}>
-      <strong>Invite Link:</strong> {links.invite}
-      <button onClick={() => navigator.clipboard.writeText(window.location.origin + links.invite)}>
-        Copy
-      </button>
-    </div>
-    <div>
-      <strong>Delivery Link:</strong> {links.delivery}
-      <button onClick={() => navigator.clipboard.writeText(window.location.origin + links.delivery)}>
-        Copy
-      </button>
-    </div>
-<div style={{ marginTop: "1.5rem" }}>
-  <button onClick={() => navigate(`/get-ready/${links.invite.split("/").pop()}`)}>
-    Next
-  </button>
-</div>
-</div>
-)}
+      <button onClick={handleStart}>Host Debate</button>
 
-</div>
-);
+      {links && (
+        <div style={{ marginTop: "1rem" }}>
+          <div style={{ marginBottom: "1rem" }}>
+            <strong>Invite Link:</strong> {links.invite}
+            <button onClick={() => navigator.clipboard.writeText(window.location.origin + links.invite)}>
+              Copy
+            </button>
+          </div>
+          <div>
+            <strong>Delivery Link:</strong> {links.delivery}
+            <button onClick={() => navigator.clipboard.writeText(window.location.origin + links.delivery)}>
+              Copy
+            </button>
+          </div>
+          <div style={{ marginTop: "1.5rem" }}>
+            <button onClick={handleNext}>
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default App;

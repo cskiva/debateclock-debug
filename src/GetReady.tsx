@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom"; // ✅ combined import
+import { useLocation } from "react-router-dom";
 
 function GetReady() {
   const [name, setName] = useState("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const { roomId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+const { topic, position } = location.state || { topic: "", position: "" };
 
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
@@ -35,9 +38,20 @@ function GetReady() {
 
       <p>(Mic meter coming soon)</p>
 
-      <button onClick={() => navigate(`/waiting-room/${roomId}`)}>
-        Continue
-      </button>
+     <button
+  onClick={() =>
+    navigate(`/lobby/${roomId}`, {
+      state: {
+        name,
+        topic,
+        position,
+      },
+    })
+  }
+>
+  Continue
+</button>
+
     </div>
   );
 }
