@@ -12,6 +12,7 @@ function slugify(text: string) {
 function App() {
   const [topic, setTopic] = useState("");
   const [position, setPosition] = useState("for");
+  const [duration, setDuration] = useState(10); // ⏱ NEW: duration state
   const [links, setLinks] = useState<{ invite: string; delivery: string } | null>(null);
   const navigate = useNavigate();
 
@@ -24,9 +25,10 @@ function App() {
       delivery: `/watch/${roomId}`,
     });
 
-    // Store topic and position for use later
+    // Store topic, position, and duration for use later
     sessionStorage.setItem("debate-topic", topic);
     sessionStorage.setItem("debate-position", position);
+    sessionStorage.setItem("debate-duration", duration.toString()); // ⏱ NEW
   }
 
   function handleNext() {
@@ -37,6 +39,7 @@ function App() {
       state: {
         topic: sessionStorage.getItem("debate-topic") || "",
         position: sessionStorage.getItem("debate-position") || "",
+        duration: Number(sessionStorage.getItem("debate-duration")) || 10, // ⏱ NEW
       },
     });
   }
@@ -67,6 +70,19 @@ function App() {
         </select>
       </label>
 
+      <label>
+        Debate Length: {duration} minutes
+        <input
+          type="range"
+          min="2"
+          max="120"
+          step="1"
+          value={duration}
+          onChange={(e) => setDuration(Number(e.target.value))}
+          style={{ display: "block", margin: "0.5rem 0", width: "100%" }}
+        />
+      </label>
+
       <button onClick={handleStart}>Host Debate</button>
 
       {links && (
@@ -84,9 +100,7 @@ function App() {
             </button>
           </div>
           <div style={{ marginTop: "1.5rem" }}>
-            <button onClick={handleNext}>
-              Next
-            </button>
+            <button onClick={handleNext}>Next</button>
           </div>
         </div>
       )}
