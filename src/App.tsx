@@ -6,13 +6,13 @@ function slugify(text: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")
-    .substring(0, 50); // limit length
+    .substring(0, 50);
 }
 
 function App() {
   const [topic, setTopic] = useState("");
   const [position, setPosition] = useState("for");
-  const [duration, setDuration] = useState(10); // ⏱ NEW: duration state
+  const [name, setName] = useState("");
   const [links, setLinks] = useState<{ invite: string; delivery: string } | null>(null);
   const navigate = useNavigate();
 
@@ -25,10 +25,9 @@ function App() {
       delivery: `/watch/${roomId}`,
     });
 
-    // Store topic, position, and duration for use later
     sessionStorage.setItem("debate-topic", topic);
     sessionStorage.setItem("debate-position", position);
-    sessionStorage.setItem("debate-duration", duration.toString()); // ⏱ NEW
+    sessionStorage.setItem("debate-name", name);
   }
 
   function handleNext() {
@@ -39,14 +38,25 @@ function App() {
       state: {
         topic: sessionStorage.getItem("debate-topic") || "",
         position: sessionStorage.getItem("debate-position") || "",
-        duration: Number(sessionStorage.getItem("debate-duration")) || 10, // ⏱ NEW
+        name: sessionStorage.getItem("debate-name") || "",
       },
     });
   }
 
   return (
     <div style={{ padding: "2rem" }}>
-      <h1>Start a Debate</h1>
+      <h1>Host a Debate</h1>
+
+      <label>
+        Your Name:
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          style={{ display: "block", margin: "0.5rem 0", width: "100%" }}
+          placeholder="Enter your name"
+        />
+      </label>
 
       <label>
         Debate Topic:
@@ -55,6 +65,7 @@ function App() {
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           style={{ display: "block", margin: "0.5rem 0", width: "100%" }}
+          placeholder="Enter debate topic"
         />
       </label>
 
@@ -68,19 +79,6 @@ function App() {
           <option value="for">For</option>
           <option value="against">Against</option>
         </select>
-      </label>
-
-      <label>
-        Debate Length: {duration} minutes
-        <input
-          type="range"
-          min="2"
-          max="120"
-          step="1"
-          value={duration}
-          onChange={(e) => setDuration(Number(e.target.value))}
-          style={{ display: "block", margin: "0.5rem 0", width: "100%" }}
-        />
       </label>
 
       <button onClick={handleStart}>Host Debate</button>

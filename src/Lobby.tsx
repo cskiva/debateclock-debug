@@ -1,13 +1,15 @@
-import { useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 import "./Lobby.css";
 
 function Lobby() {
+  const navigate = useNavigate();
   const location = useLocation();
-  const { topic, position, name } = location.state || {
+  const { topic, position, name, duration } = location.state || {
     topic: "",
     position: "",
     name: "",
+    duration: 10,
   };
 
   const [secondsLeft, setSecondsLeft] = useState(60);
@@ -28,6 +30,10 @@ function Lobby() {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
+          // Navigate to debate page when countdown ends
+          navigate(`/debate/${topic}`, {
+            state: { topic, position, name, duration },
+          });
           return 0;
         }
         return prev - 1;
@@ -35,7 +41,7 @@ function Lobby() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [navigate, topic, position, name, duration]);
 
   return (
     <div className="lobby-screen">
@@ -85,3 +91,4 @@ function Lobby() {
 }
 
 export default Lobby;
+
