@@ -12,7 +12,7 @@ function Lobby() {
     duration: 10,
   };
 
-  const [secondsLeft, setSecondsLeft] = useState(60);
+  const [secondsLeft, setSecondsLeft] = useState(20);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
