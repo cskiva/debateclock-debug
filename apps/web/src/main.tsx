@@ -11,6 +11,7 @@ import Lobby from "./Lobby";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { SocketProvider } from "./_context/SocketContext";
+import WatchPage from "./components/Watch";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -47,6 +48,14 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               element={
                 <Layout>
                   <JoinPage />
+                </Layout>
+              }
+            />
+            <Route
+              path="/watch/:roomId"
+              element={
+                <Layout>
+                  <WatchPage />
                 </Layout>
               }
             />

@@ -43,7 +43,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
   useEffect(() => {
     // Replace with your actual socket server URL
     const socketInstance = io(
-      process.env.REACT_APP_SOCKET_URL || "http://localhost:3001",
+      import.meta.env.REACT_APP_SOCKET_URL || "http://localhost:3001",
       {
         transports: ["websocket", "polling"],
       }
@@ -68,7 +68,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketInstance.on(
       "room-joined",
       (data: { roomId: string; users: SocketUser[] }) => {
-        console.log("Joined room:", data.roomId);
+        // console.log("Joined room:", data.roomId);
         setCurrentRoom(data.roomId);
         setUsers(data.users);
       }
