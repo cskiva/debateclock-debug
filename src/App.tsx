@@ -1,4 +1,3 @@
-import { ArrowRight, Copy, Eye, MessageSquare, Users } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -6,6 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "./components/ui/card";
+import { MessageSquare, Users } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -14,12 +14,12 @@ import {
   SelectValue,
 } from "./components/ui/select";
 
-import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
+import DebateLinksCard from "./components/DebateLinksCard";
 import Header from "./components/Header";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
-import { Separator } from "./components/ui/separator";
+import { createDebateOnServer } from "./lib/createDebateAndSync";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
@@ -33,14 +33,12 @@ function slugify(text: string) {
 
 function App() {
   const [topic, setTopic] = useState("");
-  const [position, setPosition] = useState("for");
+  const [position, setPosition] = useState<"for" | "against">("for");
   const [name, setName] = useState("");
   const [links, setLinks] = useState<{
     invite: string;
     delivery: string;
   } | null>(null);
-  const [copiedLink, setCopiedLink] = useState<string | null>(null);
-  // Navigation would be handled by your router in the actual app
 
   const navigate = useNavigate();
 
@@ -68,7 +66,9 @@ function App() {
   function handleNext() {
     if (!links) return;
 
-    const roomId = links.invite.split("/").pop();
+    const roomId = links.invite.split("/").pop() ?? "";
+
+    createDebateOnServer({ topic, position, name, roomId });
 
     // Navigate to the get-ready page with the room ID
     // Pass the debate data through the route state
@@ -80,16 +80,6 @@ function App() {
         roomId,
       },
     });
-  }
-
-  async function copyToClipboard(text: string, linkType: string) {
-    try {
-      await navigator.clipboard.writeText(window.location.origin + text);
-      setCopiedLink(linkType);
-      setTimeout(() => setCopiedLink(null), 2000);
-    } catch (err) {
-      console.error("Failed to copy text: ", err);
-    }
   }
 
   const isFormValid = name.trim() && topic.trim();
@@ -153,7 +143,12 @@ function App() {
               <Label className="text-sm font-medium text-slate-700">
                 Your Position
               </Label>
-              <Select value={position} onValueChange={setPosition}>
+              <Select
+                value={position}
+                onValueChange={(value) =>
+                  value == "for" || (value == "against" && setPosition(value))
+                }
+              >
                 <SelectTrigger className="h-11 border-slate-200 focus:border-indigo-500 focus:ring-indigo-500">
                   <SelectValue />
                 </SelectTrigger>
@@ -187,101 +182,7 @@ function App() {
         </Card>
 
         {/* Links Card */}
-        {links && (
-          <Card className="mt-6 shadow-xl border-0 bg-white/95 backdrop-blur-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg text-green-700 flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                Debate Room Created!
-              </CardTitle>
-              <CardDescription>
-                Share these links with participants and viewers
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Invite Link */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-indigo-600" />
-                  <Label className="font-medium text-slate-700">
-                    Participant Invite
-                  </Label>
-                  <Badge variant="secondary" className="text-xs">
-                    For debaters
-                  </Badge>
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    value={window.location.origin + links.invite}
-                    readOnly
-                    className="font-mono text-sm bg-slate-50 border-slate-200"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(links.invite, "invite")}
-                    className="px-3 min-w-[80px] border-slate-200 hover:bg-slate-50"
-                  >
-                    {copiedLink === "invite" ? (
-                      <span className="text-green-600 text-xs font-medium">
-                        Copied!
-                      </span>
-                    ) : (
-                      <Copy className="w-4 h-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              <Separator className="bg-slate-200" />
-
-              {/* Delivery Link */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-purple-600" />
-                  <Label className="font-medium text-slate-700">
-                    Viewer Link
-                  </Label>
-                  <Badge variant="secondary" className="text-xs">
-                    For audience
-                  </Badge>
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    value={window.location.origin + links.delivery}
-                    readOnly
-                    className="font-mono text-sm bg-slate-50 border-slate-200"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(links.delivery, "delivery")}
-                    className="px-3 min-w-[80px] border-slate-200 hover:bg-slate-50"
-                  >
-                    {copiedLink === "delivery" ? (
-                      <span className="text-green-600 text-xs font-medium">
-                        Copied!
-                      </span>
-                    ) : (
-                      <Copy className="w-4 h-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              {/* Next Button */}
-              <div className="pt-4">
-                <Button
-                  onClick={handleNext}
-                  className="w-full h-12 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200"
-                >
-                  Continue to Prep Room
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {links && <DebateLinksCard topic={topic} handleNext={handleNext} />}
 
         {/* Info Card */}
         <Card className="mt-6 border-0 bg-gradient-to-r from-indigo-50 to-purple-50 shadow-sm">

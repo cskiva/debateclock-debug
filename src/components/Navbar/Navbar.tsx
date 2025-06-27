@@ -129,7 +129,7 @@ export default function Navbar() {
               </Button>
               <Button
                 size="sm"
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                className="bg-gradient-to-r text-white from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
               >
                 Sign Up
               </Button>
@@ -196,7 +196,7 @@ export default function Navbar() {
                     <Button variant="ghost" className="w-full justify-start">
                       Login
                     </Button>
-                    <Button className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700">
+                    <Button className="w-full text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700">
                       Sign Up
                     </Button>
                   </div>
