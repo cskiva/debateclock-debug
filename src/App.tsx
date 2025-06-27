@@ -20,6 +20,7 @@ import Header from "./components/Header";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Separator } from "./components/ui/separator";
+import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
 function slugify(text: string) {
@@ -41,6 +42,8 @@ function App() {
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   // Navigation would be handled by your router in the actual app
 
+  const navigate = useNavigate();
+
   function handleStart() {
     const baseSlug = slugify(topic);
     const roomId = baseSlug || Math.random().toString(36).substring(2, 8);
@@ -50,23 +53,33 @@ function App() {
       delivery: `/watch/${roomId}`,
     });
 
-    // Note: Using in-memory storage instead of sessionStorage for Claude.ai compatibility
-    // In a real app, you'd use sessionStorage here
+    // Store debate data in sessionStorage for the next route
+    sessionStorage.setItem(
+      "debateData",
+      JSON.stringify({
+        topic,
+        position,
+        name,
+        roomId,
+      })
+    );
   }
 
   function handleNext() {
     if (!links) return;
 
     const roomId = links.invite.split("/").pop();
-    // In your actual app, you'd navigate here:
-    // navigate(`/get-ready/${roomId}`, { state: { topic, position, name } });
-    alert(
-      `Would navigate to: /get-ready/${roomId} with data: ${JSON.stringify({
+
+    // Navigate to the get-ready page with the room ID
+    // Pass the debate data through the route state
+    navigate(`/get-ready/${roomId}`, {
+      state: {
         topic,
         position,
         name,
-      })}`
-    );
+        roomId,
+      },
+    });
   }
 
   async function copyToClipboard(text: string, linkType: string) {
