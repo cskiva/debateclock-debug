@@ -1,5 +1,7 @@
-import { useState } from "react";
+import "./App.css";
+
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 
 function slugify(text: string) {
   return text
@@ -13,7 +15,10 @@ function App() {
   const [topic, setTopic] = useState("");
   const [position, setPosition] = useState("for");
   const [name, setName] = useState("");
-  const [links, setLinks] = useState<{ invite: string; delivery: string } | null>(null);
+  const [links, setLinks] = useState<{
+    invite: string;
+    delivery: string;
+  } | null>(null);
   const navigate = useNavigate();
 
   function handleStart() {
@@ -81,19 +86,33 @@ function App() {
         </select>
       </label>
 
+      <div className="bg-blue-500 p-8">hello world</div>
+
       <button onClick={handleStart}>Host Debate</button>
 
       {links && (
         <div style={{ marginTop: "1rem" }}>
           <div style={{ marginBottom: "1rem" }}>
             <strong>Invite Link:</strong> {links.invite}
-            <button onClick={() => navigator.clipboard.writeText(window.location.origin + links.invite)}>
+            <button
+              onClick={() =>
+                navigator.clipboard.writeText(
+                  window.location.origin + links.invite
+                )
+              }
+            >
               Copy
             </button>
           </div>
           <div>
             <strong>Delivery Link:</strong> {links.delivery}
-            <button onClick={() => navigator.clipboard.writeText(window.location.origin + links.delivery)}>
+            <button
+              onClick={() =>
+                navigator.clipboard.writeText(
+                  window.location.origin + links.delivery
+                )
+              }
+            >
               Copy
             </button>
           </div>
