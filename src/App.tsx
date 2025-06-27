@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./components/ui/select";
+import { useRef, useState } from "react";
 
 import { Button } from "./components/ui/button";
 import DebateLinksCard from "./components/DebateLinksCard";
@@ -21,7 +22,6 @@ import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { createDebateOnServer } from "./lib/createDebateAndSync";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
 
 function slugify(text: string) {
   return text
@@ -29,6 +29,14 @@ function slugify(text: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")
     .substring(0, 50);
+}
+
+function generateUUID(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c == "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 function App() {
@@ -40,11 +48,22 @@ function App() {
     delivery: string;
   } | null>(null);
 
+  // Generate debate ID once and keep it stable
+  const debateIdRef = useRef<string>(generateUUID());
+
   const navigate = useNavigate();
 
   function handleStart() {
     const baseSlug = slugify(topic);
     const roomId = baseSlug || Math.random().toString(36).substring(2, 8);
+
+    createDebateOnServer({
+      topic,
+      position,
+      name,
+      roomId,
+      clientId: debateIdRef.current, // Pass the stable client ID
+    });
 
     setLinks({
       invite: `/join/${roomId}`,
@@ -59,6 +78,7 @@ function App() {
         position,
         name,
         roomId,
+        clientId: debateIdRef.current, // Include the stable client ID
       })
     );
   }
@@ -68,16 +88,22 @@ function App() {
 
     const roomId = links.invite.split("/").pop() ?? "";
 
-    createDebateOnServer({ topic, position, name, roomId });
+    createDebateOnServer({
+      topic,
+      position,
+      name,
+      roomId,
+      clientId: debateIdRef.current, // Pass the stable client ID
+    });
 
-    // Navigate to the get-ready page with the room ID
     // Pass the debate data through the route state
-    navigate(`/get-ready/${roomId}`, {
+    navigate(`/lobby/${roomId}`, {
       state: {
         topic,
         position,
         name,
         roomId,
+        clientId: debateIdRef.current,
       },
     });
   }

@@ -1,4 +1,4 @@
-import { Copy, Eye, Loader2, Users } from "lucide-react";
+import { Copy, Eye, Loader2, Users, VideoIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -65,7 +65,7 @@ export default function DebateLinksCard({
   return (
     <div className={`space-y-4 py-6 ${className}`}>
       {/* Participant Invite */}
-      <div className="space-y-2 bg-green-200 p-3 rounded-md">
+      <div className="space-y-2 p-3 rounded-md">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-indigo-600" />
           <Label className="font-medium text-slate-700">
@@ -107,7 +107,7 @@ export default function DebateLinksCard({
           <Separator className="bg-slate-200" />
 
           {/* Viewer Link */}
-          <div className="space-y-2 bg-amber-200 p-3 rounded-md">
+          <div className="space-y-2 p-3 rounded-md">
             <div className="flex items-center gap-2">
               <Eye className="w-4 h-4 text-purple-600" />
               <Label className="font-medium text-slate-700">Viewer Link</Label>
@@ -145,6 +145,15 @@ export default function DebateLinksCard({
           </div>
         </>
       )}
+      <div>
+        <Button
+          onClick={handleNext}
+          className="w-full h-12 bg-gradient-to-r from-green-600 to-cyan-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <VideoIcon />
+          Go to Room
+        </Button>
+      </div>
     </div>
   );
 }
