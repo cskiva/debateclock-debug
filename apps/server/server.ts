@@ -28,172 +28,49 @@ const rooms: Record<string, SocketUser[]> = {};
 io.on("connection", (socket) => {
 	console.log("User connected:", socket.id);
 
-	socket.on("join-room", ({ roomId, userData }: { roomId: string; userData: Omit<SocketUser, "id" | "isReady"> }) => {
-		socket.join(roomId);
+	socket.on('join-room', (data) => {
+		const { roomId, userData } = data;
 
-		if (!rooms[roomId]) rooms[roomId] = [];
+		console.log('🚪 JOIN REQUEST:', {
+			socketId: socket.id.slice(-4),
+			roomId,
+			userData: userData.name,
+			currentUsers: rooms[roomId] ? rooms[roomId].length : 0
+		});
 
-		let existing = rooms[roomId].find(
-			(u) => u.name === userData.name && u.position === userData.position
-		);
-
-		if (existing) {
-			existing.id = socket.id; // Update ID on reconnect
-		} else {
-			const newUser: SocketUser = {
-				id: socket.id,
-				...userData,
-				isReady: false,
-			};
-			rooms[roomId].push(newUser);
+		if (!rooms[roomId]) {
+			console.log("clearing room")
+			rooms[roomId] = [];
 		}
 
-		io.to(roomId).emit("room-joined", { roomId, users: rooms[roomId] });
-		socket.to(roomId).emit("user-joined", existing || userData);
+		// Check if user exists by EITHER socket ID OR name
+		const existingBySocket = rooms[roomId].findIndex(u => u.id === socket.id);
+		const existingByName = rooms[roomId].findIndex(u => u.name === userData.name);
 
-		// Ready state updates
-		socket.on("set-ready", ({ roomId, isReady }: { roomId: string; isReady: boolean }) => {
-			const user = rooms[roomId]?.find((u) => u.id === socket.id);
-			if (user) {
-				user.isReady = isReady;
-				io.to(roomId).emit("user-ready-changed", {
-					userId: socket.id,
-					isReady,
-				});
-			}
-		});
-
-		// Leave logic
-		socket.on("leave-room", (roomId: string) => {
-			socket.leave(roomId);
-			rooms[roomId] = rooms[roomId]?.filter((u) => u.id !== socket.id);
-			io.to(roomId).emit("user-left", socket.id);
-		});
-
-		// WebRTC relays
-		socket.on("ready", ({ roomId }) => {
-			socket.to(roomId).emit("ready");
-		});
-		socket.on("offer", ({ sdp, roomId }) => {
-			socket.to(roomId).emit("offer", { sdp });
-		});
-		socket.on("answer", ({ sdp, roomId }) => {
-			socket.to(roomId).emit("answer", { sdp });
-		});
-		socket.on("ice-candidate", ({ candidate, roomId }) => {
-			socket.to(roomId).emit("ice-candidate", { candidate });
-		});
-		// Add these event handlers to your existing server socket.io code
-
-		// WebRTC signaling events
-		socket.on('offer', (data) => {
-			console.log('Relaying offer to room:', data.roomId);
-			socket.to(data.roomId).emit('offer', {
-				offer: data.offer,
-				from: socket.id
-			});
-		});
-
-		socket.on('answer', (data) => {
-			console.log('Relaying answer to:', data.to);
-			socket.to(data.to).emit('answer', {
-				answer: data.answer,
-				from: socket.id
-			});
-		});
-
-		socket.on('ice-candidate', (data) => {
-			console.log('Relaying ICE candidate to room:', data.roomId);
-			socket.to(data.roomId).emit('ice-candidate', {
-				candidate: data.candidate,
-				from: socket.id
-			});
-		});
-
-		// Stream health monitoring events
-		socket.on('request-reconnect', (data) => {
-			console.log('Relaying reconnect request to room:', data.roomId);
-			socket.to(data.roomId).emit('request-reconnect');
-		});
-
-		socket.on('request-stream-refresh', (data) => {
-			console.log('Relaying stream refresh request to room:', data.roomId);
-			socket.to(data.roomId).emit('request-stream-refresh');
-		});
-
-		// Enhanced join-room event to trigger WebRTC connection
-		socket.on('join-room', (data) => {
-			const { roomId, userData } = data;
-
-			// Store user data on the socket
-			(socket as any).userData = userData;
-
-			// Join the room
+		if (existingBySocket !== -1) {
+			// Update existing user by socket ID
+			rooms[roomId][existingBySocket] = { id: socket.id, ...userData };
+			console.log('♻️ Updated user by socket ID:', userData.name);
+		} else if (existingByName !== -1) {
+			// Update existing user by name (probably a refresh)
+			rooms[roomId][existingByName] = { id: socket.id, ...userData };
+			console.log('♻️ Updated user by name (refresh):', userData.name);
 			socket.join(roomId);
+		} else {
+			// Truly new user
+			rooms[roomId].push({ id: socket.id, ...userData });
+			console.log('➕ Added new user:', userData.name);
+			socket.join(roomId);
+			socket.to(roomId).emit('user-joined', { userId: socket.id });
+		}
 
-			// Get all sockets in the room with proper null checking
-			const usersInRoom = Array.from(io.sockets.adapter.rooms.get(roomId) || [])
-				.map(socketId => io.sockets.sockets.get(socketId))
-				.filter((s): s is Socket => s !== undefined); // Type guard to filter out undefined
-
-			// Emit user joined to others in room (for WebRTC)
-			if (usersInRoom.length === 2) {
-				console.log('👥 Two users in room, triggering WebRTC');
-				socket.to(roomId).emit('user-joined', userData);
-			}
-
-			// Emit updated user list to all users in room
-			io.to(roomId).emit('room-joined', {
-				roomId,
-				users: usersInRoom.map((s) => ({
-					id: s.id,
-					name: (s as any).userData?.name || 'Unknown',
-					position: (s as any).userData?.position || 'for',
-					isReady: (s as any).userData?.isReady || false
-				}))
-			});
+		// Send updated room state
+		io.to(roomId).emit('room-users', {
+			users: rooms[roomId],
+			roomUsers: rooms
 		});
 
-		// Turn passing
-		socket.on("pass-turn", ({ roomId, speaker }) => {
-			io.to(roomId).emit("turn-passed", speaker);
-		});
-
-		// Disconnect cleanup
-		socket.on("disconnect", () => {
-			for (const room in rooms) {
-				const idx = rooms[room].findIndex((u) => u.id === socket.id);
-				if (idx !== -1) {
-					rooms[room].splice(idx, 1);
-					io.to(room).emit("user-left", socket.id);
-				}
-			}
-		});
-
-
-		socket.on('webrtc-offer', (data) => {
-			console.log('📨 Relaying offer to room:', data.roomId);
-			socket.to(data.roomId).emit('webrtc-offer', {
-				offer: data.offer,
-				from: socket.id
-			});
-		});
-
-		socket.on('webrtc-answer', (data) => {
-			console.log('📨 Relaying answer to room:', data.roomId);
-			socket.to(data.roomId).emit('webrtc-answer', {
-				answer: data.answer,
-				from: socket.id
-			});
-		});
-
-		socket.on('webrtc-ice-candidate', (data) => {
-			console.log('🧊 Relaying ICE candidate to room:', data.roomId);
-			socket.to(data.roomId).emit('webrtc-ice-candidate', {
-				candidate: data.candidate,
-				from: socket.id
-			});
-		});
+		console.log('✅ Room users:', rooms[roomId].map(u => `${u.name}(${u.id.slice(-4)})`));
 	});
 });
 

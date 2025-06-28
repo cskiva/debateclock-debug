@@ -1,33 +1,31 @@
-// components/JoinRoom.tsx
+// components/Join.tsx
 import { useEffect, useState, type SetStateAction } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-
-import { useSocket, type SocketUser } from "@/_context/SocketContext";
 import { Loader2, MessageSquare, Users } from "lucide-react";
-
-import { Button } from "../ui/button";
+import { useSocket, type SocketUser } from "@/_context/SocketContext";
+import { useDebateState } from "@/hooks/useDebateState";
+import { Button } from "./ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../ui/card";
-import { Input } from "../ui/input";
+} from "./ui/card";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../ui/select";
-import { Label } from "../ui/label";
-import { useDebateState } from "@/hooks/useDebateState";
+} from "./ui/select";
 
-function JoinRoom() {
+function Join() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
-  const { joinRoom, isConnected, users } = useSocket();
+  const { isConnected, users } = useSocket();
   const { setLocalUser } = useDebateState(); // destructure from the hook
 
   const [name, setName] = useState("");
@@ -73,12 +71,6 @@ function JoinRoom() {
     setIsJoining(true);
 
     try {
-      // Join the socket room
-      joinRoom(roomId, {
-        name: name.trim(),
-        position,
-      });
-
       // Navigate to lobby
       navigate(`/lobby/${roomId}`, {
         state: {
@@ -276,4 +268,4 @@ function JoinRoom() {
   );
 }
 
-export default JoinRoom;
+export default Join;

@@ -1,333 +1,368 @@
-// hooks/useWebRTC.ts - Fixed interface
-import { useCallback, useEffect, useRef, useState } from 'react';
-
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { useSocket } from '../_context/SocketContext';
 
-interface UseWebRTCReturn {
-	localVideoRef: React.RefObject<HTMLVideoElement | null>;  // Allow null
-	remoteVideoRef: React.RefObject<HTMLVideoElement | null>; // Allow null
-	streamReady: boolean;
-	setStreamReady: (ready: boolean) => void;
-	reconnectStream: () => void;
-	localStream: MediaStream | null;
-	remoteStream: MediaStream | null;
+// WebRTC-specific types
+interface WebRTCOffer {
+	offer: RTCSessionDescriptionInit;
+	roomId: string;
+	to: string;
+	from: string;
 }
 
-export function useWebRTC(roomId: string, autoStart: boolean = false): UseWebRTCReturn {
-	const { socket } = useSocket();
-	const localVideoRef = useRef<HTMLVideoElement | null>(null);  // Explicitly allow null
-	const remoteVideoRef = useRef<HTMLVideoElement | null>(null); // Explicitly allow null
-	const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-	const localStreamRef = useRef<MediaStream | null>(null);
-	const remoteStreamRef = useRef<MediaStream | null>(null);
+interface WebRTCAnswer {
+	answer: RTCSessionDescriptionInit;
+	roomId: string;
+	to: string;
+	from: string;
+}
 
-	const [streamReady, setStreamReady] = useState(false);
+interface WebRTCIceCandidate {
+	candidate: RTCIceCandidate;
+	roomId: string;
+	from: string;
+}
+
+interface WebRTCUserJoined {
+	userId: string;
+	roomId: string;
+}
+
+type RTCConnectionState = 'new' | 'connecting' | 'connected' | 'disconnected' | 'failed' | 'closed';
+
+interface UseWebRTCReturn {
+	localVideoRef: RefObject<HTMLVideoElement | null>;
+	remoteVideoRef: RefObject<HTMLVideoElement | null>;
+	localStream: MediaStream | null;
+	remoteStream: MediaStream | null;
+	streamReady: boolean;
+	connectionState: RTCConnectionState;
+	reconnectStream: () => Promise<void>;
+}
+
+interface MediaDevicesConfig {
+	video: {
+		width: { ideal: number };
+		height: { ideal: number };
+		facingMode: string;
+	};
+	audio: {
+		echoCancellation: boolean;
+		noiseSuppression: boolean;
+	};
+}
+
+export function useWebRTC(
+	roomId: string,
+	isParticipant: boolean = false
+): UseWebRTCReturn {
+	// Refs for video elements
+	const localVideoRef = useRef<HTMLVideoElement | null>(null);
+	const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+
+	// State
 	const [localStream, setLocalStream] = useState<MediaStream | null>(null);
 	const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+	const [streamReady, setStreamReady] = useState<boolean>(false);
+	const [connectionState, setConnectionState] = useState<RTCConnectionState>('new');
 
-	// ICE servers configuration
-	const iceServers = [
-		{ urls: 'stun:stun.l.google.com:19302' },
-		{ urls: 'stun:stun1.l.google.com:19302' },
-	];
+	// Refs to prevent loops
+	const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+	const isInitializedRef = useRef<boolean>(false);
+	const isConnectingRef = useRef<boolean>(false);
 
-	// Monitor stream health
-	const monitorStreamHealth = useCallback((stream: MediaStream, isLocal: boolean) => {
-		if (!stream) return;
+	const { socket } = useSocket();
 
-		const tracks = stream.getTracks();
-		tracks.forEach(track => {
-			track.addEventListener('ended', () => {
-				console.warn(`${isLocal ? 'Local' : 'Remote'} track ended:`, track.kind);
-				if (isLocal) {
-					// Restart local stream
-					getLocalStream();
-				} else {
-					// Request stream refresh from remote peer
-					if (socket) {
-						socket.emit('request-stream-refresh', { roomId });
-					}
-				}
-			});
-
-			track.addEventListener('mute', () => {
-				console.warn(`${isLocal ? 'Local' : 'Remote'} track muted:`, track.kind);
-			});
-
-			track.addEventListener('unmute', () => {
-				console.log(`${isLocal ? 'Local' : 'Remote'} track unmuted:`, track.kind);
-			});
-		});
-	}, [socket, roomId]);
-
-	// Get local media stream
-	const getLocalStream = useCallback(async () => {
-		try {
-			console.log('Getting local stream...');
-			const stream = await navigator.mediaDevices.getUserMedia({
-				video: {
-					width: { ideal: 1280 },
-					height: { ideal: 720 },
-					frameRate: { ideal: 30 }
-				},
-				audio: {
-					echoCancellation: true,
-					noiseSuppression: true,
-					autoGainControl: true
-				}
-			});
-
-			localStreamRef.current = stream;
-			setLocalStream(stream);
-
-			if (localVideoRef.current) {
-				localVideoRef.current.srcObject = stream;
-			}
-
-			// Monitor local stream health
-			monitorStreamHealth(stream, true);
-
-			setStreamReady(true);
-			return stream;
-		} catch (error) {
-			console.error('Error getting local stream:', error);
-			setStreamReady(false);
-			return null;
+	// STABLE: Create peer connection only once
+	const createPeerConnection = useCallback((): RTCPeerConnection => {
+		if (peerConnectionRef.current) {
+			console.log('♻️ Reusing existing peer connection');
+			return peerConnectionRef.current;
 		}
-	}, [monitorStreamHealth]);
 
-	// Create peer connection
-	const createPeerConnection = useCallback(() => {
-		console.log('Creating peer connection...');
-		const pc = new RTCPeerConnection({ iceServers });
+		console.log('🔗 Creating new peer connection');
+		const pc = new RTCPeerConnection({
+			iceServers: [
+				{ urls: 'stun:stun.l.google.com:19302' },
+				{ urls: 'stun:stun1.l.google.com:19302' }
+			]
+		});
 
-		// Handle remote stream
-		pc.ontrack = (event) => {
-			console.log('Received remote track:', event.track.kind);
-			const [remoteStream] = event.streams;
-
-			if (remoteStream) {
-				remoteStreamRef.current = remoteStream;
-				setRemoteStream(remoteStream);
-
-				if (remoteVideoRef.current) {
-					remoteVideoRef.current.srcObject = remoteStream;
-				}
-
-				// Monitor remote stream health
-				monitorStreamHealth(remoteStream, false);
-			}
+		// Connection state monitoring
+		pc.onconnectionstatechange = (): void => {
+			console.log('🔗 Connection state:', pc.connectionState);
+			setConnectionState(pc.connectionState as RTCConnectionState);
 		};
 
-		// Handle ICE candidates
-		pc.onicecandidate = (event) => {
+		// ICE candidate handling
+		pc.onicecandidate = (event: RTCPeerConnectionIceEvent): void => {
 			if (event.candidate && socket) {
-				console.log('Sending ICE candidate');
-				socket.emit('webrtc-ice-candidate', {
-					roomId,
-					candidate: event.candidate
+				console.log('🧊 Sending ICE candidate');
+				socket.emit('ice-candidate', {
+					candidate: event.candidate,
+					roomId
 				});
 			}
 		};
 
-		// Monitor connection state
-		pc.onconnectionstatechange = () => {
-			console.log('Connection state:', pc.connectionState);
+		// Remote stream handling
+		pc.ontrack = (event: RTCTrackEvent): void => {
+			console.log('📡 Received remote track:', event.track.kind);
+			const [stream] = event.streams;
+			setRemoteStream(stream);
 
-			if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-				console.warn('Peer connection failed/disconnected, attempting reconnect...');
-				setTimeout(reconnectStream, 2000);
-			}
-		};
-
-		// Monitor ICE connection state
-		pc.oniceconnectionstatechange = () => {
-			console.log('ICE connection state:', pc.iceConnectionState);
-
-			if (pc.iceConnectionState === 'failed') {
-				console.warn('ICE connection failed, restarting...');
-				pc.restartIce();
+			if (remoteVideoRef.current) {
+				remoteVideoRef.current.srcObject = stream;
 			}
 		};
 
 		peerConnectionRef.current = pc;
 		return pc;
-	}, [socket, roomId, monitorStreamHealth]);
+	}, [socket, roomId]);
 
-	// Reconnect stream function
-	const reconnectStream = useCallback(async () => {
-		console.log('Reconnecting stream...');
-
-		// Clean up existing connection
-		if (peerConnectionRef.current) {
-			peerConnectionRef.current.close();
+	// STABLE: Initialize local stream only once
+	const initializeLocalStream = useCallback(async (): Promise<MediaStream | null> => {
+		if (localStream || !isParticipant) {
+			console.log('🎥 Local stream already exists or not participant');
+			return localStream;
 		}
 
-		// Get fresh local stream
-		const stream = await getLocalStream();
-		if (!stream) return;
+		try {
+			console.log('🎥 Getting user media...');
 
-		// Create new peer connection
-		const pc = createPeerConnection();
+			const mediaConfig: MediaStreamConstraints = {
+				video: {
+					width: { ideal: 1280 },
+					height: { ideal: 720 },
+					facingMode: 'user'
+				},
+				audio: {
+					echoCancellation: true,
+					noiseSuppression: true
+				}
+			};
 
-		// Add local stream tracks
-		stream.getTracks().forEach(track => {
-			pc.addTrack(track, stream);
+			const stream: MediaStream = await navigator.mediaDevices.getUserMedia(mediaConfig);
+
+			console.log('✅ Local stream acquired:', stream.id);
+			setLocalStream(stream);
+			setStreamReady(true);
+
+			// Assign to video element
+			if (localVideoRef.current) {
+				localVideoRef.current.srcObject = stream;
+			}
+
+			return stream;
+		} catch (error) {
+			console.error('❌ Failed to get user media:', error);
+			throw error;
+		}
+	}, [localStream, isParticipant]);
+
+	// STABLE: Handle WebRTC signaling
+	useEffect(() => {
+		if (!socket || !roomId || !isParticipant || isInitializedRef.current) {
+			return;
+		}
+
+		console.log('🚀 Initializing WebRTC for room:', roomId);
+		isInitializedRef.current = true;
+
+		const cleanup: (() => void)[] = [];
+
+		const handleOffer = async (data: WebRTCOffer): Promise<void> => {
+			if (isConnectingRef.current) {
+				console.log('⏸️ Already connecting, ignoring offer');
+				return;
+			}
+
+			console.log('📨 Received offer from:', data.from);
+			isConnectingRef.current = true;
+
+			try {
+				const pc: RTCPeerConnection = createPeerConnection();
+				const stream: MediaStream | null = await initializeLocalStream();
+
+				// Add local tracks to peer connection
+				if (stream) {
+					stream.getTracks().forEach((track: MediaStreamTrack) => {
+						console.log('➕ Adding track to peer connection:', track.kind);
+						pc.addTrack(track, stream);
+					});
+				}
+
+				await pc.setRemoteDescription(data.offer);
+				const answer: RTCSessionDescriptionInit = await pc.createAnswer();
+				await pc.setLocalDescription(answer);
+
+				socket.emit('answer', {
+					answer,
+					roomId,
+					to: data.from
+				});
+
+				console.log('📤 Sent answer');
+			} catch (error) {
+				console.error('❌ Error handling offer:', error);
+				isConnectingRef.current = false;
+			}
+		};
+
+		const handleAnswer = async (data: WebRTCAnswer): Promise<void> => {
+			console.log('📨 Received answer from:', data.from);
+			try {
+				const pc: RTCPeerConnection | null = peerConnectionRef.current;
+				if (pc && pc.remoteDescription === null) {
+					await pc.setRemoteDescription(data.answer);
+					console.log('✅ Set remote description from answer');
+				}
+				isConnectingRef.current = false;
+			} catch (error) {
+				console.error('❌ Error handling answer:', error);
+				isConnectingRef.current = false;
+			}
+		};
+
+		const handleIceCandidate = async (data: WebRTCIceCandidate): Promise<void> => {
+			console.log('🧊 Received ICE candidate from:', data.from);
+			try {
+				const pc: RTCPeerConnection | null = peerConnectionRef.current;
+				if (pc && pc.remoteDescription) {
+					await pc.addIceCandidate(data.candidate);
+					console.log('✅ Added ICE candidate');
+				} else {
+					console.log('⏸️ Queuing ICE candidate for later');
+				}
+			} catch (error) {
+				console.error('❌ Error adding ICE candidate:', error);
+			}
+		};
+
+		const handleUserJoined = async (data: WebRTCUserJoined): Promise<void> => {
+			if (isConnectingRef.current) {
+				console.log('⏸️ Already connecting, ignoring user joined');
+				return;
+			}
+
+			console.log('👋 User joined, initiating connection to:', data.userId);
+			isConnectingRef.current = true;
+
+			try {
+				const pc: RTCPeerConnection = createPeerConnection();
+				const stream: MediaStream | null = await initializeLocalStream();
+
+				// Add local tracks
+				if (stream) {
+					stream.getTracks().forEach((track: MediaStreamTrack) => {
+						console.log('➕ Adding track for new user:', track.kind);
+						pc.addTrack(track, stream);
+					});
+				}
+
+				const offer: RTCSessionDescriptionInit = await pc.createOffer();
+				await pc.setLocalDescription(offer);
+
+				socket.emit('offer', {
+					offer,
+					roomId,
+					to: data.userId
+				});
+
+				console.log('📤 Sent offer to new user');
+			} catch (error) {
+				console.error('❌ Error creating offer:', error);
+				isConnectingRef.current = false;
+			}
+		};
+
+		// Set up socket listeners
+		socket.on('offer', handleOffer);
+		socket.on('answer', handleAnswer);
+		socket.on('ice-candidate', handleIceCandidate);
+		socket.on('user-joined', handleUserJoined);
+
+		cleanup.push(() => {
+			socket.off('offer', handleOffer);
+			socket.off('answer', handleAnswer);
+			socket.off('ice-candidate', handleIceCandidate);
+			socket.off('user-joined', handleUserJoined);
 		});
 
-		// Notify other peer to reconnect
-		if (socket) {
-			socket.emit('request-reconnect', { roomId });
+		// Initialize local stream immediately
+		if (isParticipant) {
+			initializeLocalStream().catch(console.error);
 		}
-	}, [getLocalStream, createPeerConnection, socket, roomId]);
-
-	// Initialize WebRTC
-	useEffect(() => {
-		if (!socket || !autoStart) return;
-
-		getLocalStream();
-
-		// Socket event handlers
-		const handleOffer = async (data: { offer: RTCSessionDescriptionInit, from: string }) => {
-			console.log('Received offer from:', data.from);
-
-			if (!localStreamRef.current) {
-				await getLocalStream();
-			}
-
-			const pc = createPeerConnection();
-
-			// Add local stream tracks
-			if (localStreamRef.current) {
-				localStreamRef.current.getTracks().forEach(track => {
-					pc.addTrack(track, localStreamRef.current!);
-				});
-			}
-
-			await pc.setRemoteDescription(data.offer);
-			const answer = await pc.createAnswer();
-			await pc.setLocalDescription(answer);
-
-			socket.emit('webrtc-answer', {
-				roomId,
-				answer,
-				to: data.from
-			});
-		};
-
-		const handleAnswer = async (data: { answer: RTCSessionDescriptionInit }) => {
-			console.log('Received answer');
-			if (peerConnectionRef.current) {
-				await peerConnectionRef.current.setRemoteDescription(data.answer);
-			}
-		};
-
-		const handleIceCandidate = async (data: { candidate: RTCIceCandidateInit }) => {
-			console.log('Received ICE candidate');
-			if (peerConnectionRef.current) {
-				await peerConnectionRef.current.addIceCandidate(data.candidate);
-			}
-		};
-
-		const handleUserJoined = async () => {
-			console.log('User joined, initiating call...');
-
-			if (!localStreamRef.current) {
-				await getLocalStream();
-			}
-
-			const pc = createPeerConnection();
-
-			// Add local stream tracks
-			if (localStreamRef.current) {
-				localStreamRef.current.getTracks().forEach(track => {
-					pc.addTrack(track, localStreamRef.current!);
-				});
-			}
-
-			const offer = await pc.createOffer();
-			await pc.setLocalDescription(offer);
-
-			socket.emit('webrtc-offer', {
-				roomId,
-				offer
-			});
-		};
-
-		const handleRequestReconnect = () => {
-			console.log('Received reconnect request');
-			reconnectStream();
-		};
-
-		const handleRequestStreamRefresh = async () => {
-			console.log('Received stream refresh request');
-			await getLocalStream();
-		};
-
-		// Register socket event listeners with correct event names
-		socket.on('webrtc-offer', handleOffer);
-		socket.on('webrtc-answer', handleAnswer);
-		socket.on('webrtc-ice-candidate', handleIceCandidate);
-		socket.on('user-joined', handleUserJoined);
-		socket.on('request-reconnect', handleRequestReconnect);
-		socket.on('request-stream-refresh', handleRequestStreamRefresh);
 
 		return () => {
-			// Cleanup socket listeners
-			socket.off('webrtc-offer', handleOffer);
-			socket.off('webrtc-answer', handleAnswer);
-			socket.off('webrtc-ice-candidate', handleIceCandidate);
-			socket.off('user-joined', handleUserJoined);
-			socket.off('request-reconnect', handleRequestReconnect);
-			socket.off('request-stream-refresh', handleRequestStreamRefresh);
+			console.log('🧹 Cleaning up WebRTC');
+			cleanup.forEach((fn: () => void) => fn());
+			isConnectingRef.current = false;
+		};
+	}, [socket, roomId, isParticipant, createPeerConnection, initializeLocalStream]);
+
+	// STABLE: Reconnect function
+	const reconnectStream = useCallback(async (): Promise<void> => {
+		console.log('🔄 Reconnecting streams...');
+
+		try {
+			// Stop existing streams
+			if (localStream) {
+				localStream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+				setLocalStream(null);
+			}
 
 			// Close peer connection
 			if (peerConnectionRef.current) {
 				peerConnectionRef.current.close();
+				peerConnectionRef.current = null;
 			}
 
-			// Stop local stream
-			if (localStreamRef.current) {
-				localStreamRef.current.getTracks().forEach(track => track.stop());
+			// Reset states
+			setRemoteStream(null);
+			setStreamReady(false);
+			isConnectingRef.current = false;
+
+			// Wait a bit
+			await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+
+			// Reinitialize
+			if (isParticipant) {
+				await initializeLocalStream();
+			}
+		} catch (error) {
+			console.error('❌ Reconnect failed:', error);
+		}
+	}, [localStream, isParticipant, initializeLocalStream]);
+
+	// Cleanup on unmount
+	useEffect(() => {
+		return () => {
+			console.log('🧹 Component unmounting, cleaning up streams');
+
+			if (localStream) {
+				localStream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+			}
+
+			if (peerConnectionRef.current) {
+				peerConnectionRef.current.close();
 			}
 		};
-	}, [socket, autoStart, roomId, getLocalStream, createPeerConnection, reconnectStream]);
-
-	// Video element health monitoring
-	useEffect(() => {
-		const localVideo = localVideoRef.current;
-		const remoteVideo = remoteVideoRef.current;
-
-		if (localVideo) {
-			const handleLocalVideoError = () => {
-				console.error('Local video error, restarting stream...');
-				getLocalStream();
-			};
-
-			localVideo.addEventListener('error', handleLocalVideoError);
-			return () => localVideo.removeEventListener('error', handleLocalVideoError);
-		}
-
-		if (remoteVideo) {
-			const handleRemoteVideoError = () => {
-				console.error('Remote video error, requesting refresh...');
-				if (socket) {
-					socket.emit('request-stream-refresh', { roomId });
-				}
-			};
-
-			remoteVideo.addEventListener('error', handleRemoteVideoError);
-			return () => remoteVideo.removeEventListener('error', handleRemoteVideoError);
-		}
-	}, [getLocalStream, socket, roomId]);
+	}, [localStream]);
 
 	return {
 		localVideoRef,
 		remoteVideoRef,
-		streamReady,
-		setStreamReady,
-		reconnectStream,
 		localStream,
-		remoteStream
+		remoteStream,
+		streamReady,
+		connectionState,
+		reconnectStream
 	};
 }
+
+// Export types for use in other components
+export type {
+	MediaDevicesConfig, RTCConnectionState,
+	UseWebRTCReturn, WebRTCAnswer,
+	WebRTCIceCandidate, WebRTCOffer, WebRTCUserJoined
+};

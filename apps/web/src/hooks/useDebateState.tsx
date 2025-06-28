@@ -17,12 +17,11 @@ const STORAGE_KEY = "debateData";
 
 export function useDebateState() {
   const { roomId } = useParams();
-  const { users, joinRoom, setReady, isConnected } = useSocket();
+  const { users, setReady, isConnected, currentRoom } = useSocket();
   const { debate: fallbackDebate } = useDebate();
 
   const [localUser, setLocalUser] = useState<DebateData | null>(null);
   const [debateInfo, setDebateInfo] = useState<DebateData | null>(null);
-  const [hasJoined, setHasJoined] = useState(false);
 
   // 🧠 Restore from sessionStorage
   useEffect(() => {
@@ -33,6 +32,7 @@ export function useDebateState() {
       try {
         const parsed = JSON.parse(stored) as DebateData;
         if (parsed.roomId === roomId) {
+          console.log("📦 Restored from sessionStorage:", parsed);
           setLocalUser(parsed);
         }
       } catch (err) {
@@ -40,18 +40,6 @@ export function useDebateState() {
       }
     }
   }, [roomId]);
-
-  // 🔌 Join the room after loading localUser
-  useEffect(() => {
-    if (!roomId || !localUser || hasJoined) return;
-
-    joinRoom(roomId, {
-      name: localUser.name,
-      position: localUser.position,
-    });
-
-    setHasJoined(true);
-  }, [roomId, localUser, joinRoom, hasJoined]);
 
   // 🧠 Persist to sessionStorage on update
   useEffect(() => {
@@ -65,6 +53,7 @@ export function useDebateState() {
     async function fetchFromSupabase() {
       if (!roomId) return;
 
+      console.log("🔍 Fetching debate info from Supabase for room:", roomId);
       const { data, error } = await supabase
         .from("debates")
         .select("*")
@@ -72,6 +61,7 @@ export function useDebateState() {
         .single();
 
       if (data && !error) {
+        console.log("📊 Got debate info from Supabase:", data);
         setDebateInfo({
           topic: data.topic,
           roomId: data.room_id,
@@ -79,10 +69,13 @@ export function useDebateState() {
           name: localUser?.name || "",
           duration: data.duration ?? 10,
         });
+      } else {
+        console.warn("⚠️ Failed to fetch from Supabase:", error);
       }
     }
 
     if (!debateInfo && fallbackDebate?.roomId === roomId) {
+      console.log("📋 Using fallback debate info:", fallbackDebate);
       setDebateInfo({
         topic: fallbackDebate?.topic ?? "",
         roomId: fallbackDebate?.roomId ?? "",
@@ -96,6 +89,18 @@ export function useDebateState() {
   }, [fallbackDebate, roomId, localUser, debateInfo]);
 
   const currentUser = users.find((u) => u.name === localUser?.name);
+
+  // Debug logging
+  useEffect(() => {
+    console.log("🔄 useDebateState state:", {
+      roomId,
+      currentRoom,
+      localUser: localUser?.name,
+      usersCount: users.length,
+      isConnected,
+      currentUser: currentUser?.name,
+    });
+  }, [roomId, currentRoom, localUser, users.length, isConnected, currentUser]);
 
   return {
     roomId,

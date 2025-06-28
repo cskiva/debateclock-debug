@@ -5,7 +5,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import App from "./App";
 import Debate from "./Debate"; // 🆕 Import the new component
 import { DebateProvider } from "./_context/DebateContext";
-import JoinRoom from "./components/JoinRoom";
+import Join from "./components/Join";
 import Layout from "./components/Layout";
 import Lobby from "./Lobby";
 import React from "react";
@@ -48,7 +48,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               path="/join/:roomId"
               element={
                 <Layout>
-                  <JoinRoom />
+                  <Join />
                 </Layout>
               }
             />
