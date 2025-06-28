@@ -37,7 +37,6 @@ const navConfig = {
 export default function Navbar() {
   const [latestRoomId, setLatestRoomId] = useState(null);
   const [loading, setLoading] = useState(true);
-  const { debate } = useDebateState();
 
   // Fetch latest debate from Supabase
   useEffect(() => {
@@ -86,7 +85,7 @@ export default function Navbar() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [debate]);
+  }, []);
 
   // Generate join and watch URLs
   const joinUrl = latestRoomId ? `/join/${latestRoomId}` : "/join";

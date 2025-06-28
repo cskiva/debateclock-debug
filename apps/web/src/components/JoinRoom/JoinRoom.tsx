@@ -28,7 +28,7 @@ function JoinRoom() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { joinRoom, isConnected, users } = useSocket();
-  const { setLocalUser } = useDebateState(); // destructure from the hook
+  const { setDebate } = useDebateState();
 
   const [name, setName] = useState("");
   const [position, setPosition] = useState<"for" | "against">("against");
@@ -62,29 +62,29 @@ function JoinRoom() {
   const handleJoin = async () => {
     if (!roomId || !name.trim()) return;
 
-    setLocalUser({
-      name: name.trim(),
+    const trimmedName = name.trim();
+
+    setDebate({
+      name: trimmedName,
       position,
       topic: debateInfo?.topic || "",
       roomId,
-      duration: 0,
+      duration: 0, // fallback — will be filled from Supabase later
     });
 
     setIsJoining(true);
 
     try {
-      // Join the socket room
       joinRoom(roomId, {
-        name: name.trim(),
+        name: trimmedName,
         position,
       });
 
-      // Navigate to lobby
       navigate(`/lobby/${roomId}`, {
         state: {
           topic: debateInfo?.topic || "",
           position,
-          name: name.trim(),
+          name: trimmedName,
           roomId,
           isHost: false,
         },

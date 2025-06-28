@@ -30,7 +30,7 @@ function Lobby() {
   const [isPaused, setIsPaused] = useState(false);
 
   const { localVideoRef, remoteVideoRef, streamReady, setStreamReady } =
-    useWebRTC(roomId!, true);
+    useWebRTC(roomId!, isHost);
 
   const readyUsers = users.filter((user) => user.isReady);
   const canStart = users.length >= 2 && readyUsers.length === users.length;

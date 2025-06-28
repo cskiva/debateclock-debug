@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
-import { useDebate } from "@/_context/DebateContext"; // fallback from Supabase
+import { useDebate } from "@/_context/DebateContext";
 import { useParams } from "react-router-dom";
 import { useSocket } from "@/_context/SocketContext";
 
@@ -13,57 +13,54 @@ export interface DebateData {
   duration?: number;
 }
 
-const STORAGE_KEY = "debateData";
+const STORAGE_KEY = "debateSession";
 
 export function useDebateState() {
   const { roomId } = useParams();
   const { users, joinRoom, setReady, isConnected } = useSocket();
   const { debate: fallbackDebate } = useDebate();
 
-  const [localUser, setLocalUser] = useState<DebateData | null>(null);
-  const [debateInfo, setDebateInfo] = useState<DebateData | null>(null);
+  const [debate, setDebate] = useState<DebateData | null>(null);
   const [hasJoined, setHasJoined] = useState(false);
 
-  // 🧠 Restore from sessionStorage
+  // 🔁 Load from sessionStorage
   useEffect(() => {
-    if (!roomId) return;
-
     const stored = sessionStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as DebateData;
         if (parsed.roomId === roomId) {
-          setLocalUser(parsed);
+          setDebate(parsed);
         }
       } catch (err) {
-        console.warn("Invalid debateData in storage", err);
+        console.warn("Invalid debateSession", err);
       }
     }
   }, [roomId]);
 
-  // 🔌 Join the room after loading localUser
+  // 🔌 Join room when debate session is ready
   useEffect(() => {
-    if (!roomId || !localUser || hasJoined) return;
+    if (!debate || hasJoined) return;
 
-    joinRoom(roomId, {
-      name: localUser.name,
-      position: localUser.position,
+    joinRoom(debate.roomId, {
+      name: debate.name,
+      position: debate.position,
     });
 
     setHasJoined(true);
-  }, [roomId, localUser, joinRoom, hasJoined]);
+  }, [debate, hasJoined, joinRoom]);
 
-  // 🧠 Persist to sessionStorage on update
+  // 💾 Store to sessionStorage
   useEffect(() => {
-    if (localUser) {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(localUser));
+    if (debate) {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(debate));
     }
-  }, [localUser]);
+  }, [debate]);
 
-  // 🧾 Fetch debate info from Supabase or fallback
+  // 📡 Load topic/duration from Supabase if missing
   useEffect(() => {
-    async function fetchFromSupabase() {
-      if (!roomId) return;
+    async function fetchDebate() {
+      if (!roomId || !debate) return;
 
       const { data, error } = await supabase
         .from("debates")
@@ -72,41 +69,40 @@ export function useDebateState() {
         .single();
 
       if (data && !error) {
-        setDebateInfo({
-          topic: data.topic,
-          roomId: data.room_id,
-          position: localUser?.position || "for",
-          name: localUser?.name || "",
-          duration: data.duration ?? 10,
-        });
+        setDebate((prev) =>
+          prev
+            ? {
+                ...prev,
+                topic: data.topic,
+                duration: data.duration ?? 10,
+              }
+            : null
+        );
       }
     }
 
-    if (!debateInfo && fallbackDebate?.roomId === roomId) {
-      setDebateInfo({
-        topic: fallbackDebate?.topic ?? "",
-        roomId: fallbackDebate?.roomId ?? "",
-        position: localUser?.position || "for",
-        name: localUser?.name || "",
-        duration: fallbackDebate?.duration ?? 0,
+    // Use fallback if present
+    if (!debate && fallbackDebate?.roomId === roomId && fallbackDebate) {
+      setDebate({
+        roomId: fallbackDebate.roomId,
+        topic: fallbackDebate.topic,
+        duration: fallbackDebate.duration ?? 10,
+        name: fallbackDebate.name ?? "",
+        position: fallbackDebate.position ?? "for",
       });
-    } else if (!debateInfo) {
-      fetchFromSupabase();
+    } else if (debate && !debate.topic) {
+      fetchDebate();
     }
-  }, [fallbackDebate, roomId, localUser, debateInfo]);
+  }, [debate, fallbackDebate, roomId]);
 
-  const currentUser = users.find((u) => u.name === localUser?.name);
+  const currentUser = users.find((u) => u.name === debate?.name);
 
   return {
-    roomId,
-    topic: debateInfo?.topic,
-    duration: debateInfo?.duration,
-    position: localUser?.position,
-    name: localUser?.name,
+    ...debate,
     users,
     currentUser,
     isConnected,
     setReady,
-    setLocalUser, // 👈 expose this so JoinRoom can call it
+    setDebate, // Used by JoinRoom to set initial values
   };
 }
