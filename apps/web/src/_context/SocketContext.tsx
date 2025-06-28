@@ -26,6 +26,8 @@ interface SocketContextType {
   leaveRoom: () => void;
   setReady: (ready: boolean) => void;
   currentRoom: string | null;
+  turnSpeaker: "for" | "against";
+  passTurn: () => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -39,11 +41,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
   const [users, setUsers] = useState<SocketUser[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
+  const [turnSpeaker, setTurnSpeaker] = useState<"for" | "against">("for");
 
   useEffect(() => {
-    // Replace with your actual socket server URL
     const socketInstance = io(
-      import.meta.env.REACT_APP_SOCKET_URL || "http://localhost:3001",
+      import.meta.env.VITE_SOCKET_URL || "http://localhost:3001",
       {
         transports: ["websocket", "polling"],
       }
@@ -51,43 +53,48 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
     setSocket(socketInstance);
 
-    // Connection event handlers
+    // --- Connection events
     socketInstance.on("connect", () => {
-      console.log("Connected to server");
+      console.log("✅ Connected to server");
       setIsConnected(true);
     });
 
     socketInstance.on("disconnect", () => {
-      console.log("Disconnected from server");
+      console.log("❌ Disconnected from server");
       setIsConnected(false);
       setUsers([]);
       setCurrentRoom(null);
     });
 
-    // Room event handlers
+    // --- Room management
     socketInstance.on(
       "room-joined",
       (data: { roomId: string; users: SocketUser[] }) => {
-        // console.log("Joined room:", data.roomId);
         setCurrentRoom(data.roomId);
         setUsers(data.users);
       }
     );
 
     socketInstance.on("user-joined", (user: SocketUser) => {
-      console.log("User joined:", user);
+      console.log("👤 User joined:", user);
       setUsers((prev) => [...prev, user]);
     });
 
     socketInstance.on("user-left", (userId: string) => {
-      console.log("User left:", userId);
+      console.log("🚪 User left:", userId);
       setUsers((prev) => prev.filter((user) => user.id !== userId));
     });
 
+    // --- Turn management
+    socketInstance.on("turn-passed", (newSpeaker: "for" | "against") => {
+      console.log("🔁 Turn passed to:", newSpeaker);
+      setTurnSpeaker(newSpeaker);
+    });
+
+    // --- Readiness tracking
     socketInstance.on(
       "user-ready-changed",
       (data: { userId: string; isReady: boolean }) => {
-        console.log("User ready status changed:", data);
         setUsers((prev) =>
           prev.map((user) =>
             user.id === data.userId ? { ...user, isReady: data.isReady } : user
@@ -96,11 +103,12 @@ export function SocketProvider({ children }: SocketProviderProps) {
       }
     );
 
+    // --- Error handling
     socketInstance.on("room-error", (error: string) => {
-      console.error("Room error:", error);
+      console.error("⚠️ Room error:", error);
     });
 
-    // Cleanup on unmount
+    // Cleanup
     return () => {
       socketInstance.disconnect();
     };
@@ -135,6 +143,19 @@ export function SocketProvider({ children }: SocketProviderProps) {
     }
   };
 
+  const passTurn = () => {
+    if (socket && currentRoom) {
+      const newSpeaker = turnSpeaker === "for" ? "against" : "for";
+      setTurnSpeaker(newSpeaker); // optimistic update
+      socket.emit("pass-turn", {
+        roomId: currentRoom,
+        speaker: newSpeaker,
+      });
+    } else {
+      console.log("⚠️ passTurn: conditions not met");
+    }
+  };
+
   const value: SocketContextType = {
     socket,
     users,
@@ -143,6 +164,8 @@ export function SocketProvider({ children }: SocketProviderProps) {
     leaveRoom,
     setReady,
     currentRoom,
+    turnSpeaker,
+    passTurn,
   };
 
   return (
@@ -150,6 +173,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useSocket() {
   const context = useContext(SocketContext);
   if (context === undefined) {

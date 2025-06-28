@@ -66,6 +66,26 @@ io.on("connection", (socket) => {
 			io.to(roomId).emit("user-left", socket.id);
 		});
 
+		socket.on("ready", ({ roomId }) => {
+			socket.to(roomId).emit("ready");
+		});
+
+		socket.on("offer", ({ sdp, roomId }) => {
+			socket.to(roomId).emit("offer", { sdp });
+		});
+
+		socket.on("answer", ({ sdp, roomId }) => {
+			socket.to(roomId).emit("answer", { sdp });
+		});
+
+		socket.on("ice-candidate", ({ candidate, roomId }) => {
+			socket.to(roomId).emit("ice-candidate", { candidate });
+		});
+
+		socket.on("pass-turn", ({ roomId, speaker }) => {
+			io.to(roomId).emit("turn-passed", speaker);
+		});
+
 		socket.on("disconnect", () => {
 			for (const room in rooms) {
 				const idx = rooms[room].findIndex((u) => u.id === socket.id);

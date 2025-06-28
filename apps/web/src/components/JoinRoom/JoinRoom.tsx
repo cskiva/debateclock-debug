@@ -22,11 +22,13 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Label } from "../ui/label";
+import { useDebateState } from "@/hooks/useDebateState";
 
 function JoinRoom() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { joinRoom, isConnected, users } = useSocket();
+  const { setLocalUser } = useDebateState(); // destructure from the hook
 
   const [name, setName] = useState("");
   const [position, setPosition] = useState<"for" | "against">("against");
@@ -59,6 +61,14 @@ function JoinRoom() {
 
   const handleJoin = async () => {
     if (!roomId || !name.trim()) return;
+
+    setLocalUser({
+      name: name.trim(),
+      position,
+      topic: debateInfo?.topic || "",
+      roomId,
+      duration: 0,
+    });
 
     setIsJoining(true);
 

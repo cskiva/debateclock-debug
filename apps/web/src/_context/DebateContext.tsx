@@ -26,6 +26,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useDebate() {
   const context = useContext(DebateContext);
   if (!context) {

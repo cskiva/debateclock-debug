@@ -1,33 +1,45 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  CheckCircle2,
   Clock,
   Mic,
   MicOff,
   Settings,
+  UserCircle2,
   Users,
   VideoIcon,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./components/ui/tooltip";
+import { useEffect, useState } from "react";
+import { useLocation, useParams } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "./lib/utils";
 import stoneAd from "./assets/stonebanner.png";
 import { useDebateState } from "./hooks/useDebateState";
-import { useLocation } from "react-router-dom";
+import { useSocket } from "./_context/SocketContext";
+import { useWebRTC } from "./hooks/useWebRTC";
 
 function Debate() {
   const location = useLocation();
   const { topic, position, name, duration = 10 } = useDebateState();
+  const { users } = useSocket();
+  const { roomId } = useParams();
 
   const [elapsed, setElapsed] = useState(0);
-  const [activeSpeaker, setActiveSpeaker] = useState<"for" | "against">("for");
+  const { turnSpeaker, passTurn, leaveRoom } = useSocket();
   const [isMuted, setIsMuted] = useState(false);
   const [debugVisible, setDebugVisible] = useState(false);
 
-  const videoRefFor = useRef<HTMLVideoElement>(null);
-  const videoRefAgainst = useRef<HTMLVideoElement>(null);
+  const { localVideoRef: videoRefFor, remoteVideoRef: videoRefAgainst } =
+    useWebRTC(roomId!, false);
 
   useEffect(() => {
     navigator.mediaDevices
@@ -40,11 +52,19 @@ function Debate() {
         }
       })
       .catch(() => alert("Camera/Mic access denied"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position]);
 
   useEffect(() => {
     const interval = setInterval(() => setElapsed((prev) => prev + 1), 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      leaveRoom(); // this will emit the leave event and clean up
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const formatTime = (seconds: number) => {
@@ -59,7 +79,7 @@ function Debate() {
     role: "for" | "against",
     ref: React.RefObject<HTMLVideoElement | null>
   ) {
-    const isActive = activeSpeaker === role;
+    const isActive = turnSpeaker === role;
     const isSelf = position === role;
     const label = role.toUpperCase();
     const labelName = isSelf ? name : "Waiting...";
@@ -99,7 +119,7 @@ function Debate() {
             className={`
             absolute bottom-0 w-full 
             ${
-              activeSpeaker === role
+              turnSpeaker === role
                 ? role === "for"
                   ? "bg-blue-600/80"
                   : "bg-red-500/80"
@@ -126,7 +146,6 @@ function Debate() {
     name,
     duration,
     elapsed,
-    activeSpeaker,
     isMuted,
     timestamp: new Date().toISOString(),
     userAgent: navigator.userAgent,
@@ -157,10 +176,8 @@ function Debate() {
 
             <div className={cn("p-2 rounded-md flex")}>
               <VideoIcon />
-              <Badge
-                variant={activeSpeaker === "for" ? "default" : "secondary"}
-              >
-                Current: {activeSpeaker.toUpperCase()}
+              <Badge variant={turnSpeaker === "for" ? "default" : "secondary"}>
+                Current: {turnSpeaker.toUpperCase()}
               </Badge>
               {duration && (
                 <Badge variant="outline">
@@ -175,17 +192,57 @@ function Debate() {
             <strong>Topic:</strong> {topic || "No topic specified"}
           </p>
 
-          <div className="relative h-96 flex items-stretch bg-gray-900 rounded-lg overflow-hidden">
-            {renderVideoBlock("for", videoRefFor)}
-            {renderVideoBlock("against", videoRefAgainst)}
+          <div className="flex gap-6">
+            {/* Main Video Block */}
+            <div className="flex-1 relative h-96 flex items-stretch bg-gray-900 rounded-lg overflow-hidden">
+              {renderVideoBlock("for", videoRefFor)}
+              {renderVideoBlock("against", videoRefAgainst)}
+            </div>
+
+            {/* User List */}
+            <div className="w-60 bg-gray-100 rounded-lg p-4 space-y-3 shadow-inner">
+              <h4 className="text-sm font-semibold text-muted-foreground mb-2">
+                Users
+              </h4>
+
+              {users.map((user) => (
+                <TooltipProvider key={user.id}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-3 p-2 rounded hover:bg-muted/30 cursor-default">
+                        <UserCircle2 className="w-5 h-5 text-gray-500" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{user.name}</p>
+                          <span
+                            className={`text-xs font-mono ${
+                              user.position === "for"
+                                ? "text-blue-500"
+                                : "text-red-500"
+                            }`}
+                          >
+                            {user.position}
+                          </span>
+                        </div>
+                        {user.isReady ? (
+                          <CheckCircle2 className="w-4 h-4 text-green-600" />
+                        ) : (
+                          <Clock className="w-4 h-4 text-yellow-600 animate-pulse" />
+                        )}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="text-xs max-w-xs">
+                      <pre>{JSON.stringify(user, null, 2)}</pre>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center justify-center gap-4 mt-6">
             <Button
-              onClick={() =>
-                setActiveSpeaker(activeSpeaker === "for" ? "against" : "for")
-              }
-              className="flex items-center gap-2"
+              onClick={passTurn}
+              className="flex items-center gap-2 cursor-pointer"
             >
               <Users className="w-4 h-4" />
               Pass Turn
@@ -245,7 +302,7 @@ function Debate() {
                   <strong>Name:</strong> {name || "Not set"}
                 </div>
                 <div>
-                  <strong>Active Speaker:</strong> {activeSpeaker}
+                  <strong>Active Speaker:</strong> {turnSpeaker}
                 </div>
                 <div>
                   <strong>Elapsed:</strong> {formatTime(elapsed)}

@@ -1,10 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle2, Clock, Users } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { useDebateState } from "./hooks/useDebateState";
+import { useSocket } from "./_context/SocketContext";
+import { useWebRTC } from "./hooks/useWebRTC";
 
 function Lobby() {
   const navigate = useNavigate();
@@ -18,11 +20,17 @@ function Lobby() {
     setReady,
   } = useDebateState();
 
+  const location = useLocation();
   const { roomId } = useParams();
+  const { joinRoom, leaveRoom } = useSocket();
+
+  const { isHost = true } = location.state || {};
+
   const [secondsLeft, setSecondsLeft] = useState(20);
-  const [streamReady, setStreamReady] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const { localVideoRef, remoteVideoRef, streamReady, setStreamReady } =
+    useWebRTC(roomId!, true);
 
   const readyUsers = users.filter((user) => user.isReady);
   const canStart = users.length >= 2 && readyUsers.length === users.length;
@@ -32,11 +40,8 @@ function Lobby() {
   useEffect(() => {
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: true })
-      .then((stream) => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          setStreamReady(true);
-        }
+      .then(() => {
+        setStreamReady(true);
       })
       .catch(() => {
         console.warn("Camera/Mic access denied");
@@ -73,22 +78,24 @@ function Lobby() {
       ? "text-amber-600"
       : "text-green-600";
 
-  // Only show mock button if you're the only one
-  const showMockButton = process.env.NODE_ENV === "development";
+  const handleReadyClick = () => {
+    if (!isHost && name) {
+      joinRoom(roomId!, { name, position: position as "for" | "against" });
+    }
+    setReady(true);
+  };
 
-  // Trigger mock opponent ready
-  function handleMockOpponent() {
-    addMockReadyUser({
-      name: "Opponent",
-      position: position === "for" ? "against" : "for",
-      isReady: true,
-    });
-  }
+  useEffect(() => {
+    return () => {
+      leaveRoom(); // this will emit the leave event and clean up
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4 md:p-8">
       <div className="bg-yellow-100 text-yellow-800 p-4 rounded mb-4">
-        <pre>{JSON.stringify({ topic, name }, null, 2)}</pre>
+        <pre>{JSON.stringify({ topic, name, isHost }, null, 2)}</pre>
       </div>
 
       <div className="mx-auto max-w-6xl">
@@ -165,18 +172,19 @@ function Lobby() {
         {!isReady && streamReady && (
           <div className="text-center mb-6">
             <Button
-              onClick={() => setReady(true)}
+              onClick={handleReadyClick}
               className="bg-green-600 hover:bg-green-700 text-white px-8 py-3"
             >
               <CheckCircle2 className="w-4 h-4 mr-2" /> I'm Ready
             </Button>
           </div>
         )}
+
         <div className="grid grid-cols-2 gap-4 mt-8">
           {/* Self Video */}
           <div className="bg-white rounded shadow p-4 flex flex-col items-center">
             <video
-              ref={videoRef}
+              ref={localVideoRef}
               autoPlay
               muted
               className="w-full h-64 bg-black rounded"
@@ -184,16 +192,22 @@ function Lobby() {
             <p className="mt-2 font-semibold text-slate-800">{name} (You)</p>
           </div>
 
-          {/* Opponent Placeholder */}
+          {/* Opponent Video or Placeholder */}
           <div className="bg-white rounded shadow p-4 flex flex-col items-center justify-center h-64">
-            <p className="text-slate-500 mb-4">Waiting for opponent...</p>
-            {showMockButton && (
-              <Button
-                onClick={handleMockOpponent}
-                className="bg-indigo-600 text-white"
-              >
-                Mock Opponent Ready
-              </Button>
+            {users.length > 1 ? (
+              <>
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  className="w-full h-64 bg-black rounded"
+                />
+                <p className="mt-2 font-semibold text-slate-800">
+                  {users.find((u) => u.id !== currentUser?.id)?.name ||
+                    "Opponent"}
+                </p>
+              </>
+            ) : (
+              <p className="text-slate-500 mb-4">Waiting for opponent...</p>
             )}
           </div>
         </div>
