@@ -88,11 +88,9 @@ io.on("connection", (socket) => {
 
 		socket.on("disconnect", () => {
 			for (const room in rooms) {
-				const idx = rooms[room].findIndex((u) => u.id === socket.id);
-				if (idx !== -1) {
-					rooms[room].splice(idx, 1);
-					io.to(room).emit("user-left", socket.id);
-				}
+				rooms[room] = rooms[room].filter((u) => u.id !== socket.id);
+				io.to(room).emit("user-left", socket.id);
+				if (rooms[room].length === 0) delete rooms[room]; // optional cleanup
 			}
 		});
 	});

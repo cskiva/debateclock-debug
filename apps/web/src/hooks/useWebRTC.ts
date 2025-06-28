@@ -3,10 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSocket } from "@/_context/SocketContext";
 
 const ICE_SERVERS = {
-	iceServers: [
-		{ urls: "stun:stun.l.google.com:19302" },
-		// Add TURN server here for production
-	],
+	iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
 export function useWebRTC(roomId: string, isInitiator: boolean) {
@@ -21,6 +18,7 @@ export function useWebRTC(roomId: string, isInitiator: boolean) {
 		const pc = new RTCPeerConnection(ICE_SERVERS);
 		peerConnection.current = pc;
 
+		// 1. Get user media
 		navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
 			if (localVideoRef.current) {
 				localVideoRef.current.srcObject = stream;
@@ -29,6 +27,7 @@ export function useWebRTC(roomId: string, isInitiator: boolean) {
 			setStreamReady(true);
 		});
 
+		// 2. When remote track is received
 		pc.ontrack = (event) => {
 			const remoteStream = event.streams[0];
 			if (remoteVideoRef.current) {
@@ -36,8 +35,15 @@ export function useWebRTC(roomId: string, isInitiator: boolean) {
 			}
 		};
 
+		// 3. Handle ICE candidates
+		pc.onicecandidate = (event) => {
+			if (event.candidate) {
+				socket?.emit("ice-candidate", { candidate: event.candidate, roomId });
+			}
+		};
+
+		// 4. Signaling handlers
 		socket?.on("offer", async ({ sdp }) => {
-			if (!pc) return;
 			await pc.setRemoteDescription(new RTCSessionDescription(sdp));
 			const answer = await pc.createAnswer();
 			await pc.setLocalDescription(answer);
@@ -52,26 +58,25 @@ export function useWebRTC(roomId: string, isInitiator: boolean) {
 			try {
 				await pc.addIceCandidate(new RTCIceCandidate(candidate));
 			} catch (e) {
-				console.error("Error adding ice candidate", e);
+				console.error("Error adding ICE candidate:", e);
 			}
 		});
 
-		pc.onicecandidate = (event) => {
-			if (event.candidate) {
-				socket?.emit("ice-candidate", { candidate: event.candidate, roomId });
-			}
-		};
-
-		// Initiator creates and sends offer
+		// 5. Controlled signaling: Initiator only sends offer *after* the other side signals readiness
 		if (isInitiator) {
 			socket?.emit("ready", { roomId });
-			socket?.on("ready", async () => {
+
+			const handleReady = async () => {
 				const offer = await pc.createOffer();
 				await pc.setLocalDescription(offer);
-				socket.emit("offer", { sdp: offer, roomId });
-			});
-		} else {
-			socket?.emit("ready", { roomId });
+				socket?.emit("offer", { sdp: offer, roomId });
+			};
+
+			socket?.on("ready", handleReady);
+
+			return () => {
+				socket?.off("ready", handleReady);
+			};
 		}
 
 		return () => {
@@ -79,7 +84,6 @@ export function useWebRTC(roomId: string, isInitiator: boolean) {
 			socket?.off("offer");
 			socket?.off("answer");
 			socket?.off("ice-candidate");
-			socket?.off("ready");
 		};
 	}, [roomId, isInitiator, socket]);
 

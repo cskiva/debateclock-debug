@@ -17,10 +17,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import React from "react";
+import { supabase } from "@/lib/supabase"; // Adjust import path as needed
+import { useDebateState } from "@/hooks/useDebateState";
 
 // Navigation configuration
 const navConfig = {
@@ -30,17 +32,66 @@ const navConfig = {
     { label: "Learn", href: "/learn", icon: BookOpen },
     { label: "Community", href: "/community", icon: Users },
   ],
-  currentDebate: {
-    participant: {
-      label: "Join Debate",
-      href: "/join/example-debate",
-      icon: Users,
-    },
-    viewer: { label: "Watch Live", href: "/watch/example-debate", icon: Eye },
-  },
 };
 
 export default function Navbar() {
+  const [latestRoomId, setLatestRoomId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const { debate } = useDebateState();
+
+  // Fetch latest debate from Supabase
+  useEffect(() => {
+    const fetchLatestDebate = async () => {
+      try {
+        console.log("🔍 Fetching latest debate from Supabase");
+        const { data, error } = await supabase
+          .from("debates")
+          .select("room_id, created_at")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (error) {
+          console.error("Error fetching latest debate:", error);
+          return;
+        }
+
+        if (data) {
+          console.log("✅ Latest debate room ID:", data.room_id);
+          setLatestRoomId(data.room_id);
+        }
+      } catch (error) {
+        console.error("Error in fetchLatestDebate:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLatestDebate();
+
+    // Optional: Set up real-time subscription to get updates when new debates are created
+    const channel = supabase
+      .channel("debates-changes")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "debates" },
+        (payload) => {
+          console.log("🆕 New debate created:", payload.new.room_id);
+          setLatestRoomId(payload.new.room_id);
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [debate]);
+
+  // Generate join and watch URLs
+  const joinUrl = latestRoomId ? `/join/${latestRoomId}` : "/join";
+  const watchUrl = latestRoomId ? `/watch/${latestRoomId}` : "/watch";
+
   return (
     <nav className="bg-white/95 backdrop-blur-md border-b border-slate-200/50 sticky top-0 z-50 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -81,21 +132,44 @@ export default function Navbar() {
             {/* Participant Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center space-x-1">
+                <Button
+                  variant="ghost"
+                  className="flex items-center space-x-1"
+                  disabled={loading}
+                >
                   <Users className="w-4 h-4" />
-                  <span className="hidden sm:inline">Participate</span>
+                  <span className="hidden sm:inline">
+                    {loading ? "Loading..." : "Participate"}
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuLabel>Current Debate</DropdownMenuLabel>
-                <DropdownMenuItem className="flex items-center space-x-2">
-                  <Users className="w-4 h-4" />
-                  <span>Join Debate</span>
+              <DropdownMenuContent align="end" className="w-48 bg-white">
+                <DropdownMenuLabel>
+                  {latestRoomId ? "Latest Debate" : "No Active Debates"}
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  className="flex items-center space-x-2"
+                  disabled={!latestRoomId}
+                  asChild
+                >
+                  <Link to={joinUrl}>
+                    <Users className="w-4 h-4" />
+                    <span>
+                      {latestRoomId
+                        ? "Join Latest Debate"
+                        : "No Debate Available"}
+                    </span>
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="flex items-center space-x-2">
-                  <Settings className="w-4 h-4" />
-                  <span>Host New Debate</span>
+                <DropdownMenuItem
+                  className="flex items-center space-x-2"
+                  asChild
+                >
+                  <Link to="/host">
+                    <Settings className="w-4 h-4" />
+                    <span>Host New Debate</span>
+                  </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -103,21 +177,44 @@ export default function Navbar() {
             {/* Viewer Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center space-x-1">
+                <Button
+                  variant="ghost"
+                  className="flex items-center space-x-1"
+                  disabled={loading}
+                >
                   <Eye className="w-4 h-4" />
-                  <span className="hidden sm:inline">Watch</span>
+                  <span className="hidden sm:inline">
+                    {loading ? "Loading..." : "Watch"}
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuLabel>Live Debates</DropdownMenuLabel>
-                <DropdownMenuItem className="flex items-center space-x-2">
-                  <Eye className="w-4 h-4" />
-                  <span>Watch Live</span>
+              <DropdownMenuContent align="end" className="w-48 bg-white">
+                <DropdownMenuLabel>
+                  {latestRoomId ? "Live Debates" : "No Active Debates"}
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  className="flex items-center space-x-2"
+                  disabled={!latestRoomId}
+                  asChild
+                >
+                  <Link to={watchUrl}>
+                    <Eye className="w-4 h-4" />
+                    <span>
+                      {latestRoomId
+                        ? "Watch Latest Debate"
+                        : "No Debate Available"}
+                    </span>
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="flex items-center space-x-2">
-                  <MessageSquare className="w-4 h-4" />
-                  <span>Browse All Debates</span>
+                <DropdownMenuItem
+                  className="flex items-center space-x-2"
+                  asChild
+                >
+                  <Link to="/debates">
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Browse All Debates</span>
+                  </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -166,29 +263,39 @@ export default function Navbar() {
                   {/* Mobile Debate Actions */}
                   <div className="border-t pt-4 space-y-2">
                     <h3 className="text-sm font-medium text-slate-900 px-3">
-                      Current Debate
+                      {latestRoomId ? "Latest Debate" : "No Active Debates"}
                     </h3>
-                    <a
-                      href={navConfig.currentDebate.participant.href}
-                      className="flex items-center space-x-2 px-3 py-2 text-slate-700 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-colors duration-200"
-                    >
-                      <Users className="w-4 h-4" />
-                      <span>Join Debate</span>
-                    </a>
-                    <a
-                      href={navConfig.currentDebate.viewer.href}
-                      className="flex items-center space-x-2 px-3 py-2 text-slate-700 hover:text-purple-600 hover:bg-slate-50 rounded-lg transition-colors duration-200"
-                    >
-                      <Eye className="w-4 h-4" />
-                      <span>Watch Live</span>
-                    </a>
-                    <a
-                      href="/host"
+                    {latestRoomId ? (
+                      <>
+                        <Link
+                          to={joinUrl}
+                          className="flex items-center space-x-2 px-3 py-2 text-slate-700 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-colors duration-200"
+                        >
+                          <Users className="w-4 h-4" />
+                          <span>Join Latest Debate</span>
+                        </Link>
+                        <Link
+                          to={watchUrl}
+                          className="flex items-center space-x-2 px-3 py-2 text-slate-700 hover:text-purple-600 hover:bg-slate-50 rounded-lg transition-colors duration-200"
+                        >
+                          <Eye className="w-4 h-4" />
+                          <span>Watch Latest Debate</span>
+                        </Link>
+                      </>
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-slate-500">
+                        {loading
+                          ? "Loading debates..."
+                          : "No debates available"}
+                      </div>
+                    )}
+                    <Link
+                      to="/host"
                       className="flex items-center space-x-2 px-3 py-2 text-slate-700 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-colors duration-200"
                     >
                       <Settings className="w-4 h-4" />
                       <span>Host New Debate</span>
-                    </a>
+                    </Link>
                   </div>
 
                   {/* Mobile Auth */}
