@@ -199,7 +199,6 @@ function Lobby() {
 
   return (
     <>
-      <p> dick</p>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4 md:p-8">
         <DebugDisplay socketUsers={socketUsers} debateUsers={debateUsers} />
         <div className="mx-auto max-w-6xl">
