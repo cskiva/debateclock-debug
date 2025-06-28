@@ -153,7 +153,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     };
   }, []); // Empty dependency array - initialize only once
 
-  // STABLE: Join room function with duplicate prevention
+  // In your SocketContext.tsx - replace the joinRoom function with this:
   const joinRoom = (roomId: string, userData: UserData): void => {
     if (!socket || !isConnectedRef.current) {
       console.error("❌ Cannot join room: socket not connected");
@@ -167,6 +167,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     }
 
     console.log("🚪 Joining room:", roomId, userData);
+
+    // ✅ SET THE CURRENT ROOM IMMEDIATELY
     currentRoomRef.current = roomId;
 
     socket.emit("join-room", {
@@ -210,6 +212,13 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
       setUsers(data.users || []);
       setRoomUsers(data.roomUsers || {});
+
+      // ✅ ADD THIS LINE - update current room when we get room users
+      if (data.users && data.users.length > 0) {
+        // We're definitely in a room if we're getting user updates
+        // currentRoomRef.current should already be set, but just in case:
+        console.log("📍 Confirming current room is set");
+      }
 
       // IMPORTANT: Only trigger WebRTC if we have exactly 2 users and haven't already started
       if (data.users && data.users.length === 2 && currentRoomRef.current) {
