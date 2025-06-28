@@ -184,7 +184,10 @@ function JoinRoom() {
                 }
                 disabled={isJoining}
               >
-                <SelectTrigger className="h-11 border-slate-200 focus:border-indigo-500 focus:ring-indigo-500">
+                <SelectTrigger
+                  size="sm"
+                  className="h-11 border-slate-200 focus:border-indigo-500 focus:ring-indigo-500"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-white">

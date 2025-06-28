@@ -1,59 +1,114 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  CheckCircle2,
+  AlertCircle,
   Clock,
   Mic,
   MicOff,
-  Settings,
-  UserCircle2,
+  RefreshCw,
   Users,
   VideoIcon,
-  X,
 } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "./components/ui/tooltip";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useEffect, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import UsersList from "./components/UsersList";
 import { cn } from "./lib/utils";
-import stoneAd from "./assets/stonebanner.png";
+// import stoneAd from "./assets/stonebanner.png";
 import { useDebateState } from "./hooks/useDebateState";
+import { useParams } from "react-router-dom";
 import { useSocket } from "./_context/SocketContext";
 import { useWebRTC } from "./hooks/useWebRTC";
 
 function Debate() {
-  const location = useLocation();
   const { topic, position, name, duration = 10 } = useDebateState();
-  const { users } = useSocket();
   const { roomId } = useParams();
 
   const [elapsed, setElapsed] = useState(0);
-  const { turnSpeaker, passTurn, leaveRoom } = useSocket();
   const [isMuted, setIsMuted] = useState(false);
-  const [debugVisible, setDebugVisible] = useState(false);
+  const [localStreamHealthy, setLocalStreamHealthy] = useState(true);
+  const [remoteStreamHealthy, setRemoteStreamHealthy] = useState(true);
 
-  const { localVideoRef: videoRefFor, remoteVideoRef: videoRefAgainst } =
-    useWebRTC(roomId!, false);
+  const { turnSpeaker, passTurn, leaveRoom, users } = useSocket();
 
+  const {
+    localVideoRef,
+    remoteVideoRef,
+    setStreamReady,
+    reconnectStream,
+    localStream,
+    remoteStream,
+    streamReady,
+  } = useWebRTC(roomId!, true);
+
+  // Enhanced media stream initialization
   useEffect(() => {
     navigator.mediaDevices
-      .getUserMedia({ video: true, audio: true })
-      .then((stream) => {
-        if (position === "for" && videoRefFor.current) {
-          videoRefFor.current.srcObject = stream;
-        } else if (position === "against" && videoRefAgainst.current) {
-          videoRefAgainst.current.srcObject = stream;
-        }
+      .getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 },
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       })
-      .catch(() => alert("Camera/Mic access denied"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [position]);
+      .then(() => {
+        setStreamReady(true);
+      })
+      .catch(() => console.warn("Camera/Mic access denied"));
+  }, [setStreamReady]);
+
+  // Stream health monitoring for local stream
+  useEffect(() => {
+    if (localStream) {
+      const checkLocalHealth = () => {
+        const tracks = localStream.getTracks();
+        const healthy = tracks.every((track) => track.readyState === "live");
+        setLocalStreamHealthy(healthy);
+
+        if (!healthy) {
+          console.warn(
+            "Local stream unhealthy, tracks:",
+            tracks.map((t) => `${t.kind}: ${t.readyState}`)
+          );
+        }
+      };
+
+      // Check immediately and then every 2 seconds
+      checkLocalHealth();
+      const interval = setInterval(checkLocalHealth, 2000);
+
+      return () => clearInterval(interval);
+    }
+  }, [localStream]);
+
+  // Stream health monitoring for remote stream
+  useEffect(() => {
+    if (remoteStream) {
+      const checkRemoteHealth = () => {
+        const tracks = remoteStream.getTracks();
+        const healthy = tracks.every((track) => track.readyState === "live");
+        setRemoteStreamHealthy(healthy);
+
+        if (!healthy) {
+          console.warn(
+            "Remote stream unhealthy, tracks:",
+            tracks.map((t) => `${t.kind}: ${t.readyState}`)
+          );
+        }
+      };
+
+      // Check immediately and then every 2 seconds
+      checkRemoteHealth();
+      const interval = setInterval(checkRemoteHealth, 2000);
+
+      return () => clearInterval(interval);
+    }
+  }, [remoteStream]);
 
   useEffect(() => {
     const interval = setInterval(() => setElapsed((prev) => prev + 1), 1000);
@@ -62,10 +117,9 @@ function Debate() {
 
   useEffect(() => {
     return () => {
-      leaveRoom(); // this will emit the leave event and clean up
+      leaveRoom();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [leaveRoom]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -75,14 +129,25 @@ function Debate() {
       .padStart(2, "0")}`;
   };
 
-  function renderVideoBlock(
+  const handleManualReconnect = () => {
+    console.log("Manual reconnect triggered");
+    reconnectStream();
+  };
+
+  const renderVideoBlock = (
     role: "for" | "against",
     ref: React.RefObject<HTMLVideoElement | null>
-  ) {
+  ) => {
     const isActive = turnSpeaker === role;
     const isSelf = position === role;
     const label = role.toUpperCase();
-    const labelName = isSelf ? name : "Waiting...";
+    const labelName = isSelf
+      ? name
+      : users.find((u) => u.position === role && u.name !== name)?.name ||
+        "Waiting...";
+
+    // Determine stream health based on role
+    const isStreamHealthy = isSelf ? localStreamHealthy : remoteStreamHealthy;
 
     if (ref)
       return (
@@ -103,10 +168,60 @@ function Debate() {
           <video
             ref={ref}
             autoPlay
-            muted={isMuted}
+            muted={isSelf || isMuted}
+            playsInline
             className="w-full h-full object-cover rounded-lg"
+            onError={() => {
+              console.error(`${isSelf ? "Local" : "Remote"} video error`);
+              if (isSelf) {
+                handleManualReconnect();
+              }
+            }}
           />
-          {!isActive && (
+
+          {/* Stream health indicator */}
+          <div className="absolute top-2 right-2 flex gap-2 items-center">
+            <div
+              className={cn(
+                "w-3 h-3 rounded-full transition-colors",
+                isStreamHealthy ? "bg-green-500" : "bg-red-500"
+              )}
+              title={isStreamHealthy ? "Stream healthy" : "Stream issues"}
+            />
+
+            {!isStreamHealthy && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleManualReconnect}
+                className="text-xs bg-white/80 hover:bg-white/90 text-black border-white/50"
+              >
+                <RefreshCw className="w-3 h-3 mr-1" />
+                Fix
+              </Button>
+            )}
+          </div>
+
+          {/* Connection status overlay for unhealthy streams */}
+          {!isStreamHealthy && (
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+              <div className="text-white text-center">
+                <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-400" />
+                <p className="text-sm">Stream disconnected</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleManualReconnect}
+                  className="mt-2 bg-white/20 hover:bg-white/30 text-white border-white/30"
+                >
+                  <RefreshCw className="w-3 h-3 mr-1" />
+                  Reconnect
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* {!isActive && (
             <div className="absolute bottom-0 w-full h-1/2 bg-lime-400 z-[1000] flex items-center justify-center opacity-80">
               <img
                 src={stoneAd}
@@ -114,11 +229,11 @@ function Debate() {
                 className="max-w-full max-h-full object-contain border-2 border-white rounded"
               />
             </div>
-          )}
+          )} */}
+
           <div
-            className={`
-            absolute bottom-0 w-full 
-            ${
+            className={cn(
+              "absolute bottom-0 w-full text-white px-2 py-1 rounded-b-lg font-semibold text-center text-sm",
               turnSpeaker === role
                 ? role === "for"
                   ? "bg-blue-600/80"
@@ -126,203 +241,134 @@ function Debate() {
                 : role === "for"
                 ? "bg-blue-600/20"
                 : "bg-red-500/20"
-            }
-            text-white px-2 py-1 rounded-b-lg font-semibold text-center text-sm
-          `}
+            )}
           >
             {label}: {labelName}
           </div>
         </div>
       );
-    else return null;
-  }
-
-  // Debug data - only show in development
-  const isDebug = process.env.NODE_ENV === "development";
-
-  const debugData = {
-    topic,
-    position,
-    name,
-    duration,
-    elapsed,
-    isMuted,
-    timestamp: new Date().toISOString(),
-    userAgent: navigator.userAgent,
-    location: {
-      pathname: location.pathname,
-      search: location.search,
-      hash: location.hash,
-      state: location.state,
-    },
-    videoRefs: {
-      forConnected: !!videoRefFor.current?.srcObject,
-      againstConnected: !!videoRefAgainst.current?.srcObject,
-    },
   };
 
-  return (
-    <div className="relative p-8 space-y-6 w-full h-[calc(100dvh-65px)] overflow-auto overflow-x-hidden">
-      <Card className="border-none shadow-lg max-w-4xl mx-auto">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">
-            Debate in Progress
-          </CardTitle>
-          <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
-            <div className="flex gap-1 p-2 rounded-md shadow-xl border-0 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
-              <Clock className="w-4 h-4" />
-              {formatTime(elapsed)}
-            </div>
-
-            <div className={cn("p-2 rounded-md flex")}>
-              <VideoIcon />
-              <Badge variant={turnSpeaker === "for" ? "default" : "secondary"}>
-                Current: {turnSpeaker.toUpperCase()}
-              </Badge>
-              {duration && (
-                <Badge variant="outline">
-                  Duration: {Math.floor(duration / 60)}m
-                </Badge>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-center mb-6 text-lg">
-            <strong>Topic:</strong> {topic || "No topic specified"}
-          </p>
-
-          <div className="flex gap-6">
-            {/* Main Video Block */}
-            <div className="flex-1 relative h-96 flex items-stretch bg-gray-900 rounded-lg overflow-hidden">
-              {renderVideoBlock("for", videoRefFor)}
-              {renderVideoBlock("against", videoRefAgainst)}
-            </div>
-
-            {/* User List */}
-            <div className="w-60 bg-gray-100 rounded-lg p-4 space-y-3 shadow-inner">
-              <h4 className="text-sm font-semibold text-muted-foreground mb-2">
-                Users
-              </h4>
-
-              {users.map((user) => (
-                <TooltipProvider key={user.id}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center gap-3 p-2 rounded hover:bg-muted/30 cursor-default">
-                        <UserCircle2 className="w-5 h-5 text-gray-500" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{user.name}</p>
-                          <span
-                            className={`text-xs font-mono ${
-                              user.position === "for"
-                                ? "text-blue-500"
-                                : "text-red-500"
-                            }`}
-                          >
-                            {user.position}
-                          </span>
-                        </div>
-                        {user.isReady ? (
-                          <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        ) : (
-                          <Clock className="w-4 h-4 text-yellow-600 animate-pulse" />
-                        )}
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent className="text-xs max-w-xs">
-                      <pre>{JSON.stringify(user, null, 2)}</pre>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center gap-4 mt-6">
-            <Button
-              onClick={passTurn}
-              className="flex items-center gap-2 cursor-pointer"
-            >
-              <Users className="w-4 h-4" />
-              Pass Turn
-            </Button>
-
-            <Button
-              variant="outline"
-              onClick={() => setIsMuted(!isMuted)}
-              className="flex items-center gap-2"
-            >
-              {isMuted ? (
-                <MicOff className="w-4 h-4" />
-              ) : (
-                <Mic className="w-4 h-4" />
-              )}
-              {isMuted ? "Unmute" : "Mute"}
-            </Button>
-
-            {isDebug && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setDebugVisible(!debugVisible)}
-                className="flex items-center gap-2 text-yellow-600"
-              >
-                <Settings className="w-4 h-4" />
-                Debug
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Debug Panel - Only in Development */}
-      {isDebug && debugVisible && (
-        <Card className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950/50">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
-              🐛 Debug Information
+  if (localVideoRef && remoteVideoRef)
+    return (
+      <div className="relative p-8 space-y-6 w-full h-[calc(100dvh-65px)] overflow-auto overflow-x-hidden">
+        <Card className="border-none shadow-lg max-w-4xl mx-auto">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-bold">
+              Debate in Progress
             </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDebugVisible(false)}
-              className="text-yellow-600 hover:text-yellow-800"
-            >
-              <X className="w-4 h-4" />
-            </Button>
+            <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
+              <div className="flex gap-1 p-2 rounded-md shadow-xl border-0 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+                <Clock className="w-4 h-4" />
+                {formatTime(elapsed)}
+              </div>
+              <div className="p-2 rounded-md flex items-center gap-2">
+                <VideoIcon />
+                <Badge
+                  variant={turnSpeaker === "for" ? "default" : "secondary"}
+                >
+                  Current: {turnSpeaker.toUpperCase()}
+                </Badge>
+                {duration && (
+                  <Badge variant="outline">
+                    Duration: {Math.floor(duration / 60)}m
+                  </Badge>
+                )}
+                {/* Stream ready indicator */}
+                <Badge
+                  variant={
+                    streamReady && localStreamHealthy && remoteStreamHealthy
+                      ? "default"
+                      : "destructive"
+                  }
+                  className="ml-2"
+                >
+                  {streamReady && localStreamHealthy && remoteStreamHealthy
+                    ? "🟢 Connected"
+                    : "🔴 Connection Issues"}
+                </Badge>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <strong>Position:</strong> {position || "Not set"}
-                </div>
-                <div>
-                  <strong>Name:</strong> {name || "Not set"}
-                </div>
-                <div>
-                  <strong>Active Speaker:</strong> {turnSpeaker}
-                </div>
-                <div>
-                  <strong>Elapsed:</strong> {formatTime(elapsed)}
+            <p className="text-center mb-6 text-lg">
+              <strong>Topic:</strong> {topic || "No topic specified"}
+            </p>
+
+            {/* Connection status banner */}
+            {(!localStreamHealthy || !remoteStreamHealthy) && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-center gap-2 text-amber-800">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="text-sm font-medium">
+                    Connection issues detected.
+                    {!localStreamHealthy && " Your stream is disconnected."}
+                    {!remoteStreamHealthy &&
+                      " Opponent's stream is disconnected."}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleManualReconnect}
+                    className="ml-auto"
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    Reconnect All
+                  </Button>
                 </div>
               </div>
+            )}
 
-              <details className="bg-black/10 rounded p-2">
-                <summary className="cursor-pointer font-semibold">
-                  Full Debug Data
-                </summary>
-                <pre className="text-xs bg-black text-green-400 p-4 rounded mt-2 overflow-auto max-h-64">
-                  {JSON.stringify(debugData, null, 2)}
-                </pre>
-              </details>
+            <div className="flex gap-6">
+              <div className="flex-1 relative h-96 flex items-stretch bg-gray-900 rounded-lg overflow-hidden">
+                {renderVideoBlock("for", localVideoRef)}
+                {renderVideoBlock("against", remoteVideoRef)}
+              </div>
+
+              <div className="w-60 bg-gray-100 rounded-lg p-4 space-y-3 shadow-inner">
+                <h4 className="text-sm font-semibold text-muted-foreground mb-2">
+                  Users List
+                </h4>
+                <UsersList />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-4 mt-6">
+              <Button
+                onClick={passTurn}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <Users className="w-4 h-4" />
+                Pass Turn
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={() => setIsMuted(!isMuted)}
+                className="flex items-center gap-2"
+              >
+                {isMuted ? (
+                  <MicOff className="w-4 h-4" />
+                ) : (
+                  <Mic className="w-4 h-4" />
+                )}
+                {isMuted ? "Unmute" : "Mute"}
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={handleManualReconnect}
+                className="flex items-center gap-2"
+                disabled={localStreamHealthy && remoteStreamHealthy}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Reconnect Streams
+              </Button>
             </div>
           </CardContent>
         </Card>
-      )}
-    </div>
-  );
+      </div>
+    );
 }
 
 export default Debate;
