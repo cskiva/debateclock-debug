@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "baseUrl": ".", // allows absolute paths
+    "paths": {
+      "@/*": ["apps/web/src/*"],
+      "@server/*": ["apps/server/src/*"]
+    }
+  },
+  "references": [{ "path": "apps/web" }, { "path": "apps/server" }]
+}

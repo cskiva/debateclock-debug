@@ -19,7 +19,7 @@ import { Button } from "./components/ui/button";
 import DebateLinksCard from "./components/DebateLinksCard";
 import Header from "./components/Header";
 import { Input } from "./components/ui/input";
-import { Label } from "./components/ui/label";
+import { Label } from "@/components/ui/label";
 import { createDebateOnServer } from "./lib/createDebateAndSync";
 import { useNavigate } from "react-router-dom";
 

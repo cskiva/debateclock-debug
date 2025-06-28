@@ -5,6 +5,7 @@ import React, {
   useState,
   useRef,
   type ReactNode,
+  useCallback,
 } from "react";
 import { io, Socket } from "socket.io-client";
 
@@ -71,6 +72,7 @@ interface SocketContextValue {
   turnSpeaker: "for" | "against";
   roomUsers: RoomUsers;
   currentRoom: string | null;
+  currentUser: SocketUser | null;
   joinRoom: (roomId: string, userData: UserData) => void;
   leaveRoom: () => void;
   passTurn: () => void;
@@ -99,10 +101,20 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const [turnSpeaker, setTurnSpeaker] = useState<"for" | "against">("for");
   const [roomUsers, setRoomUsers] = useState<RoomUsers>({});
 
+  // ADD THESE FOR PERSISTENCE
+  const [currentUserData, setCurrentUserData] = useState<UserData | null>(
+    () => {
+      const saved = sessionStorage.getItem("currentUserData");
+      return saved ? JSON.parse(saved) : null;
+    }
+  );
+
   // Prevent duplicate connections and infinite loops
   const socketRef = useRef<Socket | null>(null);
   const isConnectedRef = useRef<boolean>(false);
-  const currentRoomRef = useRef<string | null>(null);
+  const currentRoomRef = useRef<string | null>(
+    sessionStorage.getItem("currentRoom")
+  );
 
   // STABLE: Initialize socket connection only once
   useEffect(() => {
@@ -124,10 +136,34 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       }
     );
 
+    // In your SocketContext useEffect where you create the socket
     newSocket.on("connect", () => {
       console.log("✅ Socket connected:", newSocket.id);
       isConnectedRef.current = true;
       setSocket(newSocket);
+
+      // AUTO-REJOIN IMMEDIATELY on connect
+      const savedRoom = sessionStorage.getItem("currentRoom");
+      const savedUserData = sessionStorage.getItem("currentUserData");
+
+      console.log("🔄 Checking for auto-rejoin:", { savedRoom, savedUserData });
+
+      if (savedRoom && savedUserData) {
+        console.log("🚪 Auto-rejoining room after connect/refresh");
+        const userData = JSON.parse(savedUserData);
+
+        // Set current room reference immediately
+        currentRoomRef.current = savedRoom;
+
+        // Rejoin the room
+        setTimeout(() => {
+          console.log("📤 Emitting rejoin for:", { savedRoom, userData });
+          newSocket.emit("join-room", {
+            roomId: savedRoom,
+            userData,
+          });
+        }, 100);
+      }
     });
 
     newSocket.on("disconnect", () => {
@@ -153,23 +189,19 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     };
   }, []); // Empty dependency array - initialize only once
 
-  // In your SocketContext.tsx - replace the joinRoom function with this:
   const joinRoom = (roomId: string, userData: UserData): void => {
     if (!socket || !isConnectedRef.current) {
       console.error("❌ Cannot join room: socket not connected");
       return;
     }
 
-    // Prevent joining the same room multiple times
-    if (currentRoomRef.current === roomId) {
-      console.log("⏸️ Already in room:", roomId);
-      return;
-    }
-
     console.log("🚪 Joining room:", roomId, userData);
 
-    // ✅ SET THE CURRENT ROOM IMMEDIATELY
+    // ✅ SET AND PERSIST CURRENT ROOM AND USER DATA
     currentRoomRef.current = roomId;
+    setCurrentUserData(userData);
+    sessionStorage.setItem("currentRoom", roomId);
+    sessionStorage.setItem("currentUserData", JSON.stringify(userData));
 
     socket.emit("join-room", {
       roomId,
@@ -289,12 +321,19 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     } as SetReadyData);
   };
 
+  // Add this to your SocketContext value
+  const getCurrentUser = useCallback(() => {
+    if (!currentUserData) return null;
+    return users.find((u) => u.name === currentUserData.name) || null;
+  }, [users, currentUserData]);
+
   const value: SocketContextValue = {
     socket,
     users,
     turnSpeaker,
     roomUsers,
     currentRoom: currentRoomRef.current,
+    currentUser: getCurrentUser(), // ADD THIS
     joinRoom,
     leaveRoom,
     passTurn,

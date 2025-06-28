@@ -20,14 +20,23 @@ function Lobby() {
   const { roomId } = useParams();
 
   // ONLY use socket for user management - remove useDebateState users
-  const { users, joinRoom, leaveRoom, setReady, currentRoom } = useSocket();
-
-  // Get debate data from route state or sessionStorage
+  const { users, joinRoom, setReady, currentRoom, currentUser } = useSocket();
+  // FIXED - more explicit:
   const routeState = location.state;
   const storedData = sessionStorage.getItem("debateData");
+
+  console.log("🔍 RAW DATA:", { routeState, storedData });
+
   const debateData = routeState || (storedData ? JSON.parse(storedData) : {});
 
-  const { topic, position, name } = debateData;
+  console.log("🔍 EXTRACTED DATA:", debateData);
+
+  const topic = debateData?.topic;
+  const position = debateData?.position;
+  const name = debateData?.name;
+
+  console.log("🔍 FINAL VALUES:", { topic, position, name, roomId });
+
   const duration = debateData.duration || 10;
 
   const [secondsLeft, setSecondsLeft] = useState(20);
@@ -50,22 +59,27 @@ function Lobby() {
   // Calculate ready state from socket users only
   const readyUsers = users.filter((user) => user.isReady);
   const canStart = users.length >= 2 && readyUsers.length === users.length;
-  const currentUser = users.find((u) => u.name === name);
   const isReady = currentUser?.isReady || false;
 
-  // AUTO-JOIN room once when component loads
+  // Reset join guard on component mount (handles refresh)
   useEffect(() => {
-    if (roomId && name && position && !hasJoinedRef.current) {
-      console.log("🚪 Auto-joining room:", { roomId, name, position });
+    hasJoinedRef.current = false;
+  }, []);
 
+  // AUTO-JOIN room - simplified since SocketContext handles persistence
+  useEffect(() => {
+    // Only join if we have fresh route data and haven't joined yet
+    if (roomId && name && position && !hasJoinedRef.current && !currentRoom) {
+      console.log("🚪 Fresh join from route data:", { roomId, name, position });
       hasJoinedRef.current = true;
+
       joinRoom(roomId, {
         name,
         position: position as "for" | "against",
         isReady: false,
       });
     }
-  }, [roomId, name, position, joinRoom]);
+  }, [roomId, name, position, joinRoom, currentRoom]);
 
   // Stream health monitoring
   useEffect(() => {
@@ -145,13 +159,6 @@ function Lobby() {
     console.log("Manual reconnect triggered from lobby");
     reconnectStream();
   };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      leaveRoom();
-    };
-  }, [leaveRoom]);
 
   // Debug display
   const DebugDisplay = () => (
