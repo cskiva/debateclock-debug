@@ -10,7 +10,6 @@ import Layout from "./components/Layout";
 import Lobby from "./Lobby";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { SimpleVideo } from "./components/SimpleVideo/SimpleVideo";
 import { SocketProvider } from "./_context/SocketContext";
 import WatchPage from "./components/Watch";
 
@@ -59,10 +58,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                   <WatchPage />
                 </Layout>
               }
-            />
-            <Route
-              path="/simple-video"
-              element={<SimpleVideo roomId="t" className="" isLocal />}
             />
           </Routes>
         </BrowserRouter>
