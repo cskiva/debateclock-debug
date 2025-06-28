@@ -1,5 +1,6 @@
 // server.ts
-import { Server } from "socket.io";
+import { Server, Socket } from "socket.io";
+
 import cors from "cors";
 import express from "express";
 import http from "http";
@@ -124,28 +125,31 @@ io.on("connection", (socket) => {
 		socket.on('join-room', (data) => {
 			const { roomId, userData } = data;
 
-			// Existing join room logic...
+			// Store user data on the socket
+			(socket as any).userData = userData;
+
+			// Join the room
 			socket.join(roomId);
 
-			// Get current users in room
+			// Get all sockets in the room with proper null checking
 			const usersInRoom = Array.from(io.sockets.adapter.rooms.get(roomId) || [])
 				.map(socketId => io.sockets.sockets.get(socketId))
-				.filter(Boolean);
+				.filter((s): s is Socket => s !== undefined); // Type guard to filter out undefined
 
-			// If this is the second user, notify about WebRTC connection
+			// Emit user joined to others in room (for WebRTC)
 			if (usersInRoom.length === 2) {
-				console.log('Two users in room, initiating WebRTC connection');
+				console.log('👥 Two users in room, triggering WebRTC');
 				socket.to(roomId).emit('user-joined', userData);
 			}
 
-			// Emit to all users in room
+			// Emit updated user list to all users in room
 			io.to(roomId).emit('room-joined', {
 				roomId,
-				users: usersInRoom.map((s: SocketUser) => ({
+				users: usersInRoom.map((s) => ({
 					id: s.id,
-					name: s.data?.name || 'Unknown',
-					position: s.data?.position || 'for',
-					isReady: s.data?.isReady || false
+					name: (s as any).userData?.name || 'Unknown',
+					position: (s as any).userData?.position || 'for',
+					isReady: (s as any).userData?.isReady || false
 				}))
 			});
 		});
@@ -164,6 +168,31 @@ io.on("connection", (socket) => {
 					io.to(room).emit("user-left", socket.id);
 				}
 			}
+		});
+
+
+		socket.on('webrtc-offer', (data) => {
+			console.log('📨 Relaying offer to room:', data.roomId);
+			socket.to(data.roomId).emit('webrtc-offer', {
+				offer: data.offer,
+				from: socket.id
+			});
+		});
+
+		socket.on('webrtc-answer', (data) => {
+			console.log('📨 Relaying answer to room:', data.roomId);
+			socket.to(data.roomId).emit('webrtc-answer', {
+				answer: data.answer,
+				from: socket.id
+			});
+		});
+
+		socket.on('webrtc-ice-candidate', (data) => {
+			console.log('🧊 Relaying ICE candidate to room:', data.roomId);
+			socket.to(data.roomId).emit('webrtc-ice-candidate', {
+				candidate: data.candidate,
+				from: socket.id
+			});
 		});
 	});
 });

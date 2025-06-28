@@ -1,11 +1,11 @@
-// hooks/useWebRTC.ts
+// hooks/useWebRTC.ts - Fixed interface
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useSocket } from '../_context/SocketContext';
 
 interface UseWebRTCReturn {
-	localVideoRef: React.RefObject<HTMLVideoElement>;
-	remoteVideoRef: React.RefObject<HTMLVideoElement>;
+	localVideoRef: React.RefObject<HTMLVideoElement | null>;  // Allow null
+	remoteVideoRef: React.RefObject<HTMLVideoElement | null>; // Allow null
 	streamReady: boolean;
 	setStreamReady: (ready: boolean) => void;
 	reconnectStream: () => void;
@@ -15,8 +15,8 @@ interface UseWebRTCReturn {
 
 export function useWebRTC(roomId: string, autoStart: boolean = false): UseWebRTCReturn {
 	const { socket } = useSocket();
-	const localVideoRef = useRef<HTMLVideoElement>(null);
-	const remoteVideoRef = useRef<HTMLVideoElement>(null);
+	const localVideoRef = useRef<HTMLVideoElement | null>(null);  // Explicitly allow null
+	const remoteVideoRef = useRef<HTMLVideoElement | null>(null); // Explicitly allow null
 	const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
 	const localStreamRef = useRef<MediaStream | null>(null);
 	const remoteStreamRef = useRef<MediaStream | null>(null);
@@ -88,7 +88,6 @@ export function useWebRTC(roomId: string, autoStart: boolean = false): UseWebRTC
 			monitorStreamHealth(stream, true);
 
 			setStreamReady(true);
-			console.log('Local stream ready:', stream.getTracks().map(t => `${t.kind}: ${t.readyState}`));
 			return stream;
 		} catch (error) {
 			console.error('Error getting local stream:', error);
@@ -124,7 +123,7 @@ export function useWebRTC(roomId: string, autoStart: boolean = false): UseWebRTC
 		pc.onicecandidate = (event) => {
 			if (event.candidate && socket) {
 				console.log('Sending ICE candidate');
-				socket.emit('ice-candidate', {
+				socket.emit('webrtc-ice-candidate', {
 					roomId,
 					candidate: event.candidate
 				});
@@ -209,7 +208,7 @@ export function useWebRTC(roomId: string, autoStart: boolean = false): UseWebRTC
 			const answer = await pc.createAnswer();
 			await pc.setLocalDescription(answer);
 
-			socket.emit('answer', {
+			socket.emit('webrtc-answer', {
 				roomId,
 				answer,
 				to: data.from
@@ -249,7 +248,7 @@ export function useWebRTC(roomId: string, autoStart: boolean = false): UseWebRTC
 			const offer = await pc.createOffer();
 			await pc.setLocalDescription(offer);
 
-			socket.emit('offer', {
+			socket.emit('webrtc-offer', {
 				roomId,
 				offer
 			});
@@ -265,19 +264,19 @@ export function useWebRTC(roomId: string, autoStart: boolean = false): UseWebRTC
 			await getLocalStream();
 		};
 
-		// Register socket event listeners
-		socket.on('offer', handleOffer);
-		socket.on('answer', handleAnswer);
-		socket.on('ice-candidate', handleIceCandidate);
+		// Register socket event listeners with correct event names
+		socket.on('webrtc-offer', handleOffer);
+		socket.on('webrtc-answer', handleAnswer);
+		socket.on('webrtc-ice-candidate', handleIceCandidate);
 		socket.on('user-joined', handleUserJoined);
 		socket.on('request-reconnect', handleRequestReconnect);
 		socket.on('request-stream-refresh', handleRequestStreamRefresh);
 
 		return () => {
 			// Cleanup socket listeners
-			socket.off('offer', handleOffer);
-			socket.off('answer', handleAnswer);
-			socket.off('ice-candidate', handleIceCandidate);
+			socket.off('webrtc-offer', handleOffer);
+			socket.off('webrtc-answer', handleAnswer);
+			socket.off('webrtc-ice-candidate', handleIceCandidate);
 			socket.off('user-joined', handleUserJoined);
 			socket.off('request-reconnect', handleRequestReconnect);
 			socket.off('request-stream-refresh', handleRequestStreamRefresh);
