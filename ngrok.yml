@@ -1,0 +1,12 @@
+version: "2"
+authtoken: 2kBTKHkSBOLIArjsvZ8nMqOstrL_5WL4t4LMLQ3cD3vYvdLXE
+
+tunnels:
+  vite-frontend:
+    addr: 5173
+    proto: http
+    domain: debate-clock-frontend.ngrok.app
+
+  socket-server:
+    addr: 3001
+    proto: http

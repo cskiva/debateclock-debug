@@ -6,6 +6,9 @@ import tailwindcss from "@tailwindcss/vite"
 // https://vite.dev/config/
 export default defineConfig({
 	plugins: [react(), tailwindcss()],
+	server: {
+		allowedHosts: ["debate-clock-frontend.ngrok.app"]
+	},
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "./src"),
