@@ -36,7 +36,15 @@ io.on("connection", (socket) => {
 		};
 
 		if (!rooms[roomId]) rooms[roomId] = [];
-		rooms[roomId].push(user);
+		if (!rooms[roomId]) rooms[roomId] = [];
+
+		const alreadyExists = rooms[roomId].some(
+			(u) => u.name === user.name && u.position === user.position
+		);
+
+		if (!alreadyExists) {
+			rooms[roomId].push(user);
+		}
 
 		io.to(roomId).emit("room-joined", { roomId, users: rooms[roomId] });
 		socket.to(roomId).emit("user-joined", user);

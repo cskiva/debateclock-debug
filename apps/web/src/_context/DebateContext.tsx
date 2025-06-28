@@ -6,6 +6,7 @@ type DebateData = {
   topic: string;
   name: string;
   position: "for" | "against";
+  duration: number | null;
 };
 
 type DebateContextType = {

@@ -14,11 +14,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "./lib/utils";
 import stoneAd from "./assets/stonebanner.png";
+import { useDebateState } from "./hooks/useDebateState";
 import { useLocation } from "react-router-dom";
 
 function Debate() {
   const location = useLocation();
-  const { topic, position, name, duration } = location.state || {};
+  const { topic, position, name, duration = 10 } = useDebateState();
 
   const [elapsed, setElapsed] = useState(0);
   const [activeSpeaker, setActiveSpeaker] = useState<"for" | "against">("for");
