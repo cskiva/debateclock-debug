@@ -15,17 +15,19 @@ function Lobby() {
     position,
     name,
     duration = 10,
-    users,
+    users: debateStateUsers,
     currentUser,
     setReady,
   } = useDebateState();
 
-  const location = useLocation();
+  const { users } = useSocket();
+
   const { roomId } = useParams();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const isHost = queryParams.get("host") === "true";
+
   const { joinRoom, leaveRoom } = useSocket();
-
-  const { isHost = true } = location.state || {};
-
   const [secondsLeft, setSecondsLeft] = useState(20);
   const [isPaused, setIsPaused] = useState(false);
 
@@ -48,7 +50,6 @@ function Lobby() {
       });
   }, []);
 
-  // Countdown logic
   useEffect(() => {
     if (!canStart || isPaused) return;
 
@@ -56,9 +57,12 @@ function Lobby() {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
-          navigate(`/debate/${roomId}`, {
-            state: { topic, position, name, duration },
-          });
+          // Defer navigation to avoid React state update in render phase
+          setTimeout(() => {
+            navigate(`/debate/${roomId}`, {
+              state: { topic, position, name, duration },
+            });
+          }, 0);
           return 0;
         }
         return prev - 1;
@@ -80,7 +84,10 @@ function Lobby() {
 
   const handleReadyClick = () => {
     if (!isHost && name) {
-      joinRoom(roomId!, { name, position: position as "for" | "against" });
+      joinRoom(roomId!, "Lobby.tsx", {
+        name,
+        position: position as "for" | "against",
+      });
     }
     setReady(true);
   };
@@ -95,7 +102,8 @@ function Lobby() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4 md:p-8">
       <div className="bg-yellow-100 text-yellow-800 p-4 rounded mb-4">
-        <pre>{JSON.stringify({ topic, name, isHost }, null, 2)}</pre>
+        <p>Socket State Users</p>
+        <p>{JSON.stringify(users)}</p>
       </div>
 
       <div className="mx-auto max-w-6xl">

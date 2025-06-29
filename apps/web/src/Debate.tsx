@@ -17,18 +17,17 @@ import {
   TooltipTrigger,
 } from "./components/ui/tooltip";
 import { useEffect, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "./lib/utils";
 import stoneAd from "./assets/stonebanner.png";
 import { useDebateState } from "./hooks/useDebateState";
+import { useParams } from "react-router-dom";
 import { useSocket } from "./_context/SocketContext";
 import { useWebRTC } from "./hooks/useWebRTC";
 
 function Debate() {
-  const location = useLocation();
   const { topic, position, name, duration = 10 } = useDebateState();
   const { users } = useSocket();
   const { roomId } = useParams();
@@ -149,12 +148,6 @@ function Debate() {
     isMuted,
     timestamp: new Date().toISOString(),
     userAgent: navigator.userAgent,
-    location: {
-      pathname: location.pathname,
-      search: location.search,
-      hash: location.hash,
-      state: location.state,
-    },
     videoRefs: {
       forConnected: !!videoRefFor.current?.srcObject,
       againstConnected: !!videoRefAgainst.current?.srcObject,

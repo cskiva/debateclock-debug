@@ -42,7 +42,7 @@ export default function Navbar() {
   useEffect(() => {
     const fetchLatestDebate = async () => {
       try {
-        console.log("🔍 Fetching latest debate from Supabase");
+        // console.log("🔍 Fetching latest debate from Supabase");
         const { data, error } = await supabase
           .from("debates")
           .select("room_id, created_at")
@@ -51,16 +51,16 @@ export default function Navbar() {
           .single();
 
         if (error) {
-          console.error("Error fetching latest debate:", error);
           return;
         }
 
         if (data) {
-          console.log("✅ Latest debate room ID:", data.room_id);
+          //   console.log(data.room_id);
           setLatestRoomId(data.room_id);
         }
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (error) {
-        console.error("Error in fetchLatestDebate:", error);
+        // console.error("Error in fetchLatestDebate:", error);
       } finally {
         setLoading(false);
       }

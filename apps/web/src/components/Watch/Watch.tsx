@@ -13,7 +13,7 @@ export default function WatchPage() {
   useEffect(() => {
     if (isConnected && roomId) {
       // Join as viewer, not a participant — no user data sent
-      joinRoom(roomId, { name: "Viewer", position: "for" }); // dummy, won't be shown
+      joinRoom(roomId, { name: "Viewer", from: "Watch.tsx", position: "for" }); // dummy, won't be shown
     }
   }, [isConnected, joinRoom, roomId]);
 

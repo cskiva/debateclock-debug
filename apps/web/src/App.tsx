@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./components/ui/select";
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "./components/ui/button";
 import DebateLinksCard from "./components/DebateLinksCard";
@@ -21,22 +21,59 @@ import Header from "./components/Header";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { createDebateOnServer } from "./lib/createDebateAndSync";
+import { useDebateState } from "./hooks/useDebateState";
 import { useNavigate } from "react-router-dom";
+import { useSocket } from "./_context/SocketContext";
+import { v4 as uuidv4 } from "uuid";
 
-function slugify(text: string) {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .substring(0, 50);
+// Debug helper functions
+function generateRandomName(): string {
+  const firstNames = [
+    "Alex",
+    "Jordan",
+    "Casey",
+    "Taylor",
+    "Morgan",
+    "Riley",
+    "Avery",
+    "Quinn",
+    "Sage",
+    "River",
+  ];
+  const lastNames = [
+    "Smith",
+    "Johnson",
+    "Brown",
+    "Davis",
+    "Wilson",
+    "Moore",
+    "Taylor",
+    "Anderson",
+    "Thomas",
+    "Jackson",
+  ];
+
+  const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+  const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+
+  return `${firstName} ${lastName}`;
 }
 
-function generateUUID(): string {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
-    const r = (Math.random() * 16) | 0;
-    const v = c == "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+function generateRandomDebateTopic(): string {
+  const topics = [
+    "Should artificial intelligence be regulated by government oversight?",
+    "Is remote work better than traditional office environments?",
+    "Should social media platforms be held responsible for content moderation?",
+    "Is nuclear energy the best solution for climate change?",
+    "Should universities eliminate standardized testing requirements?",
+    "Is cryptocurrency a viable replacement for traditional currency?",
+    "Should genetic engineering be used to enhance human capabilities?",
+    "Is universal basic income necessary for economic stability?",
+    "Should space exploration funding be prioritized over Earth-based issues?",
+    "Is online education as effective as in-person learning?",
+  ];
+
+  return topics[Math.floor(Math.random() * topics.length)];
 }
 
 function App() {
@@ -47,65 +84,67 @@ function App() {
     invite: string;
     delivery: string;
   } | null>(null);
-
-  // Generate debate ID once and keep it stable
-  const debateIdRef = useRef<string>(generateUUID());
-
+  const {
+    joinRoom,
+    setCurrentRoom,
+    generatedRoomId: roomIdUuid4,
+    generatedUserId: userIdUuid4,
+    users: socketUsers,
+  } = useSocket();
+  const { users: debateStateUsers } = useDebateState();
   const navigate = useNavigate();
 
+  // Auto-generate values on component mount for debugging
+  useEffect(() => {
+    setName(generateRandomName());
+    setTopic(generateRandomDebateTopic());
+    setPosition(Math.random() > 0.5 ? "for" : "against");
+  }, []);
+
   function handleStart() {
-    const baseSlug = slugify(topic);
-    const roomId = baseSlug || Math.random().toString(36).substring(2, 8);
+    const user = { name, position, id: userIdUuid4 };
 
-    createDebateOnServer({
-      topic,
-      position,
-      name,
-      roomId,
-      clientId: debateIdRef.current, // Pass the stable client ID
-    });
+    // Save locally
+    sessionStorage.setItem("debateUser", JSON.stringify(user));
 
+    // Create debate in Supabase
+    createDebateOnServer({ topic, position, name, roomId: roomIdUuid4 });
+
+    // Set context
+    setCurrentRoom(roomIdUuid4);
+    joinRoom(roomIdUuid4, "App.tsx", user); // emits to socket
+
+    console.log(roomIdUuid4, user);
+
+    // Show links
     setLinks({
-      invite: `/join/${roomId}`,
-      delivery: `/watch/${roomId}`,
+      invite: `/join/${roomIdUuid4}`,
+      delivery: `/watch/${roomIdUuid4}`,
     });
-
-    // Store debate data in sessionStorage for the next route
-    sessionStorage.setItem(
-      "debateData",
-      JSON.stringify({
-        topic,
-        position,
-        name,
-        roomId,
-        clientId: debateIdRef.current, // Include the stable client ID
-      })
-    );
   }
+
+  useEffect(() => {
+    if (socketUsers.length > 0) {
+      console.log("socketUsers", socketUsers);
+    } else {
+      console.log("socketUsers List is 0");
+    }
+  }, [socketUsers]);
+
+  useEffect(() => {
+    if (debateStateUsers.length > 0) {
+      console.log("debateStateUsers", debateStateUsers);
+    } else {
+      console.log("debateStateUsers List is 0");
+    }
+  }, [debateStateUsers]);
 
   function handleNext() {
     if (!links) return;
 
     const roomId = links.invite.split("/").pop() ?? "";
 
-    createDebateOnServer({
-      topic,
-      position,
-      name,
-      roomId,
-      clientId: debateIdRef.current, // Pass the stable client ID
-    });
-
-    // Pass the debate data through the route state
-    navigate(`/lobby/${roomId}`, {
-      state: {
-        topic,
-        position,
-        name,
-        roomId,
-        clientId: debateIdRef.current,
-      },
-    });
+    navigate(`/lobby/${roomId}?host=true`);
   }
 
   const isFormValid = name.trim() && topic.trim();
@@ -208,7 +247,13 @@ function App() {
         </Card>
 
         {/* Links Card */}
-        {links && <DebateLinksCard topic={topic} handleNext={handleNext} />}
+        {links && (
+          <DebateLinksCard
+            topic={topic}
+            handleNext={handleNext}
+            roomId={roomIdUuid4}
+          />
+        )}
 
         {/* Info Card */}
         <Card className="mt-6 border-0 bg-gradient-to-r from-indigo-50 to-purple-50 shadow-sm">

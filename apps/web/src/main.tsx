@@ -4,7 +4,6 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import App from "./App";
 import Debate from "./Debate"; // 🆕 Import the new component
-import { DebateProvider } from "./_context/DebateContext";
 import JoinRoom from "./components/JoinRoom";
 import Layout from "./components/Layout";
 import Lobby from "./Lobby";
@@ -16,52 +15,50 @@ import WatchPage from "./components/Watch";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <SocketProvider>
-      <DebateProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <Layout>
-                  <App />
-                </Layout>
-              }
-            />
-            <Route
-              path="/lobby/:roomId"
-              element={
-                <Layout>
-                  <Lobby />
-                </Layout>
-              }
-            />
-            <Route
-              path="/debate/:roomId"
-              element={
-                <Layout>
-                  <Debate />
-                </Layout>
-              }
-            />
-            <Route
-              path="/join/:roomId"
-              element={
-                <Layout>
-                  <JoinRoom />
-                </Layout>
-              }
-            />
-            <Route
-              path="/watch/:roomId"
-              element={
-                <Layout>
-                  <WatchPage />
-                </Layout>
-              }
-            />
-          </Routes>
-        </BrowserRouter>
-      </DebateProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Layout>
+                <App />
+              </Layout>
+            }
+          />
+          <Route
+            path="/lobby/:roomId"
+            element={
+              <Layout>
+                <Lobby />
+              </Layout>
+            }
+          />
+          <Route
+            path="/debate/:roomId"
+            element={
+              <Layout>
+                <Debate />
+              </Layout>
+            }
+          />
+          <Route
+            path="/join/:roomId"
+            element={
+              <Layout>
+                <JoinRoom />
+              </Layout>
+            }
+          />
+          <Route
+            path="/watch/:roomId"
+            element={
+              <Layout>
+                <WatchPage />
+              </Layout>
+            }
+          />
+        </Routes>
+      </BrowserRouter>
     </SocketProvider>
   </React.StrictMode>
 );

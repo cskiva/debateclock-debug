@@ -7,6 +7,8 @@ import {
   type ReactNode,
 } from "react";
 import { io, Socket } from "socket.io-client";
+import { supabase } from "@/lib/supabase";
+import { v4 as uuidv4 } from "uuid";
 
 export interface SocketUser {
   id: string;
@@ -21,6 +23,7 @@ interface SocketContextType {
   isConnected: boolean;
   joinRoom: (
     roomId: string,
+    calledFrom: string,
     userData: Omit<SocketUser, "id" | "isReady">
   ) => void;
   leaveRoom: () => void;
@@ -28,6 +31,10 @@ interface SocketContextType {
   currentRoom: string | null;
   turnSpeaker: "for" | "against";
   passTurn: () => void;
+  setUsers: React.Dispatch<React.SetStateAction<SocketUser[]>>;
+  setCurrentRoom: React.Dispatch<React.SetStateAction<string | null>>;
+  generatedRoomId: string;
+  generatedUserId: string;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -43,30 +50,36 @@ export function SocketProvider({ children }: SocketProviderProps) {
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
   const [turnSpeaker, setTurnSpeaker] = useState<"for" | "against">("for");
 
+  // UUIDs generated once on initial load
+  const [generatedRoomId] = useState<string>(() => uuidv4());
+  const [generatedUserId] = useState<string>(() => uuidv4());
+
   useEffect(() => {
     const socketInstance = io(
       import.meta.env.VITE_SOCKET_URL || "http://localhost:3001",
-      {
-        transports: ["websocket", "polling"],
-      }
+      { transports: ["websocket", "polling"] }
     );
 
     setSocket(socketInstance);
 
-    // --- Connection events
     socketInstance.on("connect", () => {
       console.log("✅ Connected to server");
       setIsConnected(true);
     });
 
-    socketInstance.on("disconnect", () => {
+    socketInstance.on("disconnect", async () => {
       console.log("❌ Disconnected from server");
       setIsConnected(false);
       setUsers([]);
       setCurrentRoom(null);
+
+      const socketId = socketInstance.id;
+      await supabase
+        .from("participants")
+        .update({ peer_connection_status: "disconnected" })
+        .eq("socket_id", socketId);
     });
 
-    // --- Room management
     socketInstance.on(
       "room-joined",
       (data: { roomId: string; users: SocketUser[] }) => {
@@ -76,22 +89,17 @@ export function SocketProvider({ children }: SocketProviderProps) {
     );
 
     socketInstance.on("user-joined", (user: SocketUser) => {
-      console.log("👤 User joined:", user);
       setUsers((prev) => [...prev, user]);
     });
 
     socketInstance.on("user-left", (userId: string) => {
-      console.log("🚪 User left:", userId);
       setUsers((prev) => prev.filter((user) => user.id !== userId));
     });
 
-    // --- Turn management
     socketInstance.on("turn-passed", (newSpeaker: "for" | "against") => {
-      console.log("🔁 Turn passed to:", newSpeaker);
       setTurnSpeaker(newSpeaker);
     });
 
-    // --- Readiness tracking
     socketInstance.on(
       "user-ready-changed",
       (data: { userId: string; isReady: boolean }) => {
@@ -103,26 +111,39 @@ export function SocketProvider({ children }: SocketProviderProps) {
       }
     );
 
-    // --- Error handling
     socketInstance.on("room-error", (error: string) => {
       console.error("⚠️ Room error:", error);
     });
 
-    // Cleanup
     return () => {
       socketInstance.disconnect();
     };
   }, []);
 
-  const joinRoom = (
+  const joinRoom = async (
     roomId: string,
+    calledFrom: string,
     userData: Omit<SocketUser, "id" | "isReady">
   ) => {
     if (socket) {
-      socket.emit("join-room", {
-        roomId,
-        userData,
+      console.log("joinRoom Called from___", calledFrom);
+      socket.emit("join-room", { roomId, userData });
+
+      const { error } = await supabase.from("participants").insert({
+        room_id: roomId,
+        name: userData.name,
+        position: userData.position,
+        socket_id: socket.id,
+        peer_connection_status: "connected",
+        ice_candidates: [],
+        is_ready: false,
       });
+
+      if (error) {
+        console.error("❌ Failed to log participant in Supabase:", error);
+      } else {
+        console.log("📥 Participant logged to Supabase");
+      }
     }
   };
 
@@ -136,23 +157,15 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
   const setReady = (ready: boolean) => {
     if (socket && currentRoom) {
-      socket.emit("set-ready", {
-        roomId: currentRoom,
-        isReady: ready,
-      });
+      socket.emit("set-ready", { roomId: currentRoom, isReady: ready });
     }
   };
 
   const passTurn = () => {
     if (socket && currentRoom) {
       const newSpeaker = turnSpeaker === "for" ? "against" : "for";
-      setTurnSpeaker(newSpeaker); // optimistic update
-      socket.emit("pass-turn", {
-        roomId: currentRoom,
-        speaker: newSpeaker,
-      });
-    } else {
-      console.log("⚠️ passTurn: conditions not met");
+      setTurnSpeaker(newSpeaker);
+      socket.emit("pass-turn", { roomId: currentRoom, speaker: newSpeaker });
     }
   };
 
@@ -166,6 +179,10 @@ export function SocketProvider({ children }: SocketProviderProps) {
     currentRoom,
     turnSpeaker,
     passTurn,
+    setUsers,
+    setCurrentRoom,
+    generatedRoomId,
+    generatedUserId,
   };
 
   return (
@@ -173,7 +190,6 @@ export function SocketProvider({ children }: SocketProviderProps) {
   );
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useSocket() {
   const context = useContext(SocketContext);
   if (context === undefined) {

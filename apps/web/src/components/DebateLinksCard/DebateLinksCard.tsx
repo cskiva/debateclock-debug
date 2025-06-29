@@ -1,23 +1,15 @@
-import { Copy, Eye, Loader2, Users, VideoIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Copy, Eye, Users, VideoIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-
-// Slugify util
-function slugify(text: string) {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .substring(0, 50);
-}
+import { useState } from "react";
 
 interface DebateLinksCardProps {
   topic: string;
+  roomId: string;
   showViewerLink?: boolean;
   className?: string;
   handleNext: () => void;
@@ -25,32 +17,15 @@ interface DebateLinksCardProps {
 
 export default function DebateLinksCard({
   topic,
+  roomId,
   showViewerLink = true,
   className = "",
   handleNext,
 }: DebateLinksCardProps) {
-  const [slug, setSlug] = useState("");
-  const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
-  // Auto-generate slug with debounce
-  useEffect(() => {
-    if (!topic.trim()) {
-      setSlug("");
-      return;
-    }
-
-    setLoading(true);
-    const timeout = setTimeout(() => {
-      setSlug(slugify(topic));
-      setLoading(false);
-    }, 500);
-
-    return () => clearTimeout(timeout);
-  }, [topic]);
-
-  const invite = slug ? `/join/${slug}` : "";
-  const delivery = slug ? `/watch/${slug}` : "";
+  const invite = `/join/${roomId}`;
+  const delivery = `/watch/${roomId}`;
 
   async function copyToClipboard(text: string, type: string) {
     try {
@@ -77,21 +52,19 @@ export default function DebateLinksCard({
         </div>
         <div className="flex gap-2">
           <Input
-            value={slug ? window.location.origin + invite : ""}
+            value={roomId ? window.location.origin + invite : ""}
             readOnly
-            placeholder={loading ? "Generating..." : "Link will appear here"}
+            placeholder="Link will appear here"
             className="font-mono text-sm bg-slate-50 border-slate-200"
           />
           <Button
             variant="outline"
             size="sm"
-            disabled={!slug || loading}
+            disabled={!roomId}
             onClick={() => copyToClipboard(invite, "invite")}
             className="px-3 min-w-[80px] text-green-600 border-green-400 hover:bg-green-400/20"
           >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : copied === "invite" ? (
+            {copied === "invite" ? (
               <span className="text-green-600 text-xs font-medium">
                 Copied!
               </span>
@@ -117,23 +90,19 @@ export default function DebateLinksCard({
             </div>
             <div className="flex gap-2">
               <Input
-                value={slug ? window.location.origin + delivery : ""}
+                value={roomId ? window.location.origin + delivery : ""}
                 readOnly
-                placeholder={
-                  loading ? "Generating..." : "Link will appear here"
-                }
+                placeholder="Link will appear here"
                 className="font-mono text-sm bg-slate-50 border-slate-200"
               />
               <Button
                 variant="outline"
                 size="sm"
-                disabled={!slug || loading}
+                disabled={!roomId}
                 onClick={() => copyToClipboard(delivery, "delivery")}
                 className="px-3 min-w-[80px] text-amber-600 border-amber-400 hover:bg-amber-400/20"
               >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : copied === "delivery" ? (
+                {copied === "delivery" ? (
                   <span className="text-amber-600 text-xs font-medium">
                     Copied!
                   </span>

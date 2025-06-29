@@ -27,37 +27,14 @@ import { useDebateState } from "@/hooks/useDebateState";
 function JoinRoom() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
-  const { joinRoom, isConnected, users } = useSocket();
+  const { isConnected, users } = useSocket();
   const { setDebate } = useDebateState();
+
+  const { users: debateStateUsers, ...debateInfo } = useDebateState();
 
   const [name, setName] = useState("");
   const [position, setPosition] = useState<"for" | "against">("against");
   const [isJoining, setIsJoining] = useState(false);
-  const [debateInfo, setDebateInfo] = useState<{
-    topic: string;
-    hostName: string;
-  } | null>(null);
-
-  useEffect(() => {
-    // Fetch debate info from your API
-    const fetchDebateInfo = async () => {
-      try {
-        // Replace with your actual API call
-        const response = await fetch(`/api/debates/${roomId}`);
-        const data = await response.json();
-        setDebateInfo({
-          topic: data.topic,
-          hostName: data.host_name,
-        });
-      } catch (error) {
-        console.error("Failed to fetch debate info:", error);
-      }
-    };
-
-    if (roomId) {
-      fetchDebateInfo();
-    }
-  }, [roomId]);
 
   const handleJoin = async () => {
     if (!roomId || !name.trim()) return;
@@ -73,26 +50,7 @@ function JoinRoom() {
     });
 
     setIsJoining(true);
-
-    try {
-      joinRoom(roomId, {
-        name: trimmedName,
-        position,
-      });
-
-      navigate(`/lobby/${roomId}`, {
-        state: {
-          topic: debateInfo?.topic || "",
-          position,
-          name: trimmedName,
-          roomId,
-          isHost: false,
-        },
-      });
-    } catch (error) {
-      console.error("Failed to join room:", error);
-      setIsJoining(false);
-    }
+    navigate(`/lobby/${roomId}`);
   };
 
   const isFormValid = name.trim() && isConnected;
@@ -104,6 +62,11 @@ function JoinRoom() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4 md:p-8">
+      <p>Debate State Users</p>
+      <p>{JSON.stringify(debateStateUsers)}</p>
+      <p>Socket State Users</p>
+      <p>{JSON.stringify(users)}</p>
+
       <div className="mx-auto max-w-2xl">
         {/* Header */}
         <div className="text-center mb-8">
