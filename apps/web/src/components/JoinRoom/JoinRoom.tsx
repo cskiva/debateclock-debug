@@ -1,10 +1,11 @@
 // components/JoinRoom.tsx
-import { useEffect, useState, type SetStateAction } from "react";
+import { useState, type SetStateAction } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { useSocket, type SocketUser } from "@/_context/SocketContext";
 import { Loader2, MessageSquare, Users } from "lucide-react";
 
+import { useDebateState } from "@/hooks/useDebateState";
 import { Button } from "../ui/button";
 import {
   Card,
@@ -14,6 +15,7 @@ import {
   CardTitle,
 } from "../ui/card";
 import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import {
   Select,
   SelectContent,
@@ -21,14 +23,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { Label } from "../ui/label";
-import { useDebateState } from "@/hooks/useDebateState";
 
 function JoinRoom() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
-  const { isConnected, users } = useSocket();
-  const { setDebate } = useDebateState();
+  const { isConnected, users, generatedUserId: userIdUuid4 } = useSocket();
+  const { setMe } = useDebateState();
 
   const { users: debateStateUsers, ...debateInfo } = useDebateState();
 
@@ -41,12 +41,11 @@ function JoinRoom() {
 
     const trimmedName = name.trim();
 
-    setDebate({
+    setMe({
+      id: userIdUuid4,
       name: trimmedName,
       position,
-      topic: debateInfo?.topic || "",
-      roomId,
-      duration: 0, // fallback — will be filled from Supabase later
+      isReady: false,
     });
 
     setIsJoining(true);

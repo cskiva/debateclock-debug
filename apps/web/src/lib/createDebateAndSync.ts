@@ -2,7 +2,7 @@ import { supabase } from "./supabase";
 
 export async function createDebateOnServer(debate: {
 	topic: string;
-	name: string;
+	hostName: string;
 	position: "for" | "against";
 	roomId: string;
 }) {
@@ -10,7 +10,7 @@ export async function createDebateOnServer(debate: {
 		.from("debates")
 		.upsert({
 			topic: debate.topic,
-			host_name: debate.name,
+			host_name: debate.hostName,
 			host_position: debate.position,
 			room_id: debate.roomId,
 		}, {

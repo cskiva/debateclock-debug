@@ -10,15 +10,7 @@ import { useWebRTC } from "./hooks/useWebRTC";
 
 function Lobby() {
   const navigate = useNavigate();
-  const {
-    topic,
-    position,
-    name,
-    duration = 10,
-    users: debateStateUsers,
-    currentUser,
-    setReady,
-  } = useDebateState();
+  const { topic, duration = 10, me, setReady } = useDebateState();
 
   const { users } = useSocket();
 
@@ -27,7 +19,7 @@ function Lobby() {
   const queryParams = new URLSearchParams(location.search);
   const isHost = queryParams.get("host") === "true";
 
-  const { joinRoom, leaveRoom } = useSocket();
+  const { leaveRoom } = useSocket();
   const [secondsLeft, setSecondsLeft] = useState(20);
   const [isPaused, setIsPaused] = useState(false);
 
@@ -36,7 +28,7 @@ function Lobby() {
 
   const readyUsers = users.filter((user) => user.isReady);
   const canStart = users.length >= 2 && readyUsers.length === users.length;
-  const isReady = currentUser?.isReady;
+  const isReady = me?.isReady;
 
   // Get webcam stream
   useEffect(() => {
@@ -59,9 +51,7 @@ function Lobby() {
           clearInterval(interval);
           // Defer navigation to avoid React state update in render phase
           setTimeout(() => {
-            navigate(`/debate/${roomId}`, {
-              state: { topic, position, name, duration },
-            });
+            navigate(`/debate/${roomId}`);
           }, 0);
           return 0;
         }
@@ -70,7 +60,7 @@ function Lobby() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [canStart, isPaused, navigate, roomId, topic, position, name, duration]);
+  }, [canStart, isPaused, navigate, roomId, topic, duration]);
 
   const formatTime = (seconds: number) =>
     `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, "0")}`;
@@ -83,12 +73,6 @@ function Lobby() {
       : "text-green-600";
 
   const handleReadyClick = () => {
-    if (!isHost && name) {
-      joinRoom(roomId!, "Lobby.tsx", {
-        name,
-        position: position as "for" | "against",
-      });
-    }
     setReady(true);
   };
 
@@ -197,7 +181,9 @@ function Lobby() {
               muted
               className="w-full h-64 bg-black rounded"
             />
-            <p className="mt-2 font-semibold text-slate-800">{name} (You)</p>
+            <p className="mt-2 font-semibold text-slate-800">
+              {me?.name} (You)
+            </p>
           </div>
 
           {/* Opponent Video or Placeholder */}
@@ -210,8 +196,7 @@ function Lobby() {
                   className="w-full h-64 bg-black rounded"
                 />
                 <p className="mt-2 font-semibold text-slate-800">
-                  {users.find((u) => u.id !== currentUser?.id)?.name ||
-                    "Opponent"}
+                  {users.find((u) => u.id !== me?.id)?.name || "Opponent"}
                 </p>
               </>
             ) : (

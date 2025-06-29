@@ -24,7 +24,6 @@ import { createDebateOnServer } from "./lib/createDebateAndSync";
 import { useDebateState } from "./hooks/useDebateState";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "./_context/SocketContext";
-import { v4 as uuidv4 } from "uuid";
 
 // Debug helper functions
 function generateRandomName(): string {
@@ -79,47 +78,51 @@ function generateRandomDebateTopic(): string {
 function App() {
   const [topic, setTopic] = useState("");
   const [position, setPosition] = useState<"for" | "against">("for");
-  const [name, setName] = useState("");
+  const [hostName, setHostName] = useState("");
   const [links, setLinks] = useState<{
     invite: string;
     delivery: string;
   } | null>(null);
   const {
-    joinRoom,
     setCurrentRoom,
     generatedRoomId: roomIdUuid4,
     generatedUserId: userIdUuid4,
     users: socketUsers,
   } = useSocket();
-  const { users: debateStateUsers } = useDebateState();
+  const { users: debateStateUsers, setMe, manuallyJoinRoom } = useDebateState();
   const navigate = useNavigate();
 
   // Auto-generate values on component mount for debugging
   useEffect(() => {
-    setName(generateRandomName());
+    setHostName(generateRandomName());
     setTopic(generateRandomDebateTopic());
     setPosition(Math.random() > 0.5 ? "for" : "against");
   }, []);
 
   function handleStart() {
-    const user = { name, position, id: userIdUuid4 };
+    const roomId = roomIdUuid4;
 
-    // Save locally
-    sessionStorage.setItem("debateUser", JSON.stringify(user));
+    // Set yourself in local state
+    setMe({
+      id: userIdUuid4,
+      name: hostName,
+      position,
+      isReady: false,
+    });
 
-    // Create debate in Supabase
-    createDebateOnServer({ topic, position, name, roomId: roomIdUuid4 });
+    // Create the debate in Supabase
+    createDebateOnServer({ topic, hostName, position, roomId });
 
-    // Set context
-    setCurrentRoom(roomIdUuid4);
-    joinRoom(roomIdUuid4, "App.tsx", user); // emits to socket
+    // Set the room in socket context
+    setCurrentRoom(roomId);
 
-    console.log(roomIdUuid4, user);
+    // This will emit "join-room" once `me` is ready
+    manuallyJoinRoom();
 
-    // Show links
+    // Show invite/viewer links
     setLinks({
-      invite: `/join/${roomIdUuid4}`,
-      delivery: `/watch/${roomIdUuid4}`,
+      invite: `/join/${roomId}`,
+      delivery: `/watch/${roomId}`,
     });
   }
 
@@ -147,7 +150,7 @@ function App() {
     navigate(`/lobby/${roomId}?host=true`);
   }
 
-  const isFormValid = name.trim() && topic.trim();
+  const isFormValid = hostName.trim() && topic.trim();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4 md:p-8">
@@ -178,8 +181,8 @@ function App() {
               <Input
                 id="name"
                 type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={hostName}
+                onChange={(e) => setHostName(e.target.value)}
                 placeholder="Enter your name"
                 className="h-11 border-slate-200 focus:border-indigo-500 focus:ring-indigo-500"
               />

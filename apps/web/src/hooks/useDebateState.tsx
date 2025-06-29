@@ -1,87 +1,86 @@
-// hooks/useDebateState.ts
 import { useEffect, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
 import { useParams } from "react-router-dom";
 import { useSocket } from "@/_context/SocketContext";
 
-export interface DebateData {
+export interface DebateMeta {
   topic: string;
   roomId: string;
-  position: "for" | "against";
-  name: string;
+  duration: number;
   hostName: string;
-  duration?: number;
+  hostPosition: "for" | "against";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  debateParticipants: any[] | null;
+}
+
+export interface Me {
+  id: string;
+  name: string;
+  position: "for" | "against";
+  isReady: boolean;
 }
 
 export function useDebateState() {
   const { roomId } = useParams();
   const { users, joinRoom, setReady, isConnected } = useSocket();
 
-  const [debate, setDebate] = useState<DebateData | null>(null);
-  const [hasJoined, setHasJoined] = useState(false);
+  const [debate, setDebate] = useState<DebateMeta | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
 
   useEffect(() => {
-    async function loadDebate() {
-      if (!roomId) return;
+    if (!roomId) return;
 
-      const { data, error } = await supabase
+    async function loadDebate() {
+      const { data: debateData, error: debateDataError } = await supabase
         .from("debates")
         .select("*")
         .eq("room_id", roomId)
         .single();
 
-      if (error) {
-        console.error("❌ Failed to load debate:", error);
+      if (debateDataError) {
+        console.error("❌ Failed to load debate:", debateDataError);
         return;
       }
 
-      const userSession = sessionStorage.getItem("debateUser");
-      const parsedUser = userSession ? JSON.parse(userSession) : null;
+      const { data: roomUsers } = await supabase
+        .from("participants")
+        .select("*")
+        .eq("room_id", roomId);
 
-      if (!parsedUser?.name || !parsedUser?.position) {
-        console.warn("⚠️ No user info in sessionStorage");
-        return;
-      }
-
-      const fullDebate: DebateData = {
-        topic: data.topic,
-        roomId: data.room_id,
-        duration: data.duration ?? 10,
-        name: parsedUser.name,
-        position: parsedUser.position,
-        hostName: data.host_name,
+      const fullDebate: DebateMeta = {
+        topic: debateData.topic,
+        roomId: debateData.room_id,
+        duration: debateData.duration ?? 10,
+        hostName: debateData.host_name,
+        hostPosition: debateData.host_position,
+        debateParticipants: roomUsers ?? [],
       };
-      console.log("loading debate", fullDebate);
+
       setDebate(fullDebate);
     }
 
     loadDebate();
   }, [roomId]);
 
-  useEffect(() => {
-    if (!debate || hasJoined) return;
+  const manuallyJoinRoom = () => {
+    if (!roomId || !me) return;
 
-    joinRoom(
-      debate.roomId,
-      "👽 - Socket context - 👾 [debate, hasJoined, joinRoom] useEffect",
-      {
-        name: debate.name,
-        position: debate.position,
-      }
-    );
-
-    setHasJoined(true);
-  }, [debate, hasJoined, joinRoom]);
-
-  const currentUser = users.find((u) => u.name === debate?.name);
+    joinRoom(roomId, "👽 manual join from useDebateState", {
+      name: me.name,
+      position: me.position,
+      isReady: me.isReady,
+    });
+  };
 
   return {
     ...debate,
     users,
-    currentUser,
+    me,
+    setMe,
     isConnected,
     setReady,
     setDebate,
+    manuallyJoinRoom, // 🔥 Explicit join function
   };
 }

@@ -24,7 +24,7 @@ interface SocketContextType {
   joinRoom: (
     roomId: string,
     calledFrom: string,
-    userData: Omit<SocketUser, "id" | "isReady">
+    userData: Omit<SocketUser, "id">
   ) => void;
   leaveRoom: () => void;
   setReady: (ready: boolean) => void;
@@ -123,7 +123,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
   const joinRoom = async (
     roomId: string,
     calledFrom: string,
-    userData: Omit<SocketUser, "id" | "isReady">
+    userData: Omit<SocketUser, "id">
   ) => {
     if (socket) {
       console.log("joinRoom Called from___", calledFrom);
@@ -136,7 +136,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
         socket_id: socket.id,
         peer_connection_status: "connected",
         ice_candidates: [],
-        is_ready: false,
+        is_ready: userData.isReady,
       });
 
       if (error) {
