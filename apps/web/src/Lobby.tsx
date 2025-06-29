@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
-import { useDebateState } from "./hooks/useDebateState";
+import { useDebateState } from "./_context/DebateContext";
 import { useSocket } from "./_context/SocketContext";
 import { useWebRTC } from "./hooks/useWebRTC";
 
@@ -183,6 +183,7 @@ function Lobby() {
             />
             <p className="mt-2 font-semibold text-slate-800">
               {me?.name} (You)
+              {JSON.stringify(me)}
             </p>
           </div>
 

@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "./lib/utils";
 import stoneAd from "./assets/stonebanner.png";
-import { useDebateState } from "./hooks/useDebateState";
+import { useDebateState } from "./_context/DebateContext";
 import { useParams } from "react-router-dom";
 import { useSocket } from "./_context/SocketContext";
 import { useWebRTC } from "./hooks/useWebRTC";

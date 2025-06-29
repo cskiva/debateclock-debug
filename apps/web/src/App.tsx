@@ -21,7 +21,7 @@ import Header from "./components/Header";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { createDebateOnServer } from "./lib/createDebateAndSync";
-import { useDebateState } from "./hooks/useDebateState";
+import { useDebateState } from "./_context/DebateContext";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "./_context/SocketContext";
 
@@ -83,13 +83,20 @@ function App() {
     invite: string;
     delivery: string;
   } | null>(null);
+  const [roomJoined, setRoomJoined] = useState(false);
+
   const {
     setCurrentRoom,
     generatedRoomId: roomIdUuid4,
     generatedUserId: userIdUuid4,
     users: socketUsers,
   } = useSocket();
-  const { users: debateStateUsers, setMe, manuallyJoinRoom } = useDebateState();
+  const {
+    users: debateStateUsers,
+    setMe,
+    manuallyJoinRoom,
+    me,
+  } = useDebateState();
   const navigate = useNavigate();
 
   // Auto-generate values on component mount for debugging
@@ -99,10 +106,31 @@ function App() {
     setPosition(Math.random() > 0.5 ? "for" : "against");
   }, []);
 
+  // Join room after me is set
+  useEffect(() => {
+    if (me && !roomJoined && links) {
+      console.log("🚀 Me is set, now joining room:", me);
+      manuallyJoinRoom();
+      setRoomJoined(true);
+    }
+  }, [me, roomJoined, links, manuallyJoinRoom]);
+
   function handleStart() {
     const roomId = roomIdUuid4;
 
-    // Set yourself in local state
+    console.log("🎯 Starting debate with roomId:", roomId);
+    console.log("🎯 User ID:", userIdUuid4);
+    console.log("🎯 Host name:", hostName);
+
+    // Create the debate in Supabase first
+    createDebateOnServer({ topic, hostName, position, roomId });
+
+    // Set the room in socket context
+    setCurrentRoom(roomId);
+
+    console.log("setting Me", hostName, position, userIdUuid4);
+
+    // Set yourself in local state (this will trigger the useEffect above)
     setMe({
       id: userIdUuid4,
       name: hostName,
@@ -110,37 +138,39 @@ function App() {
       isReady: false,
     });
 
-    // Create the debate in Supabase
-    createDebateOnServer({ topic, hostName, position, roomId });
-
-    // Set the room in socket context
-    setCurrentRoom(roomId);
-
-    // This will emit "join-room" once `me` is ready
-    manuallyJoinRoom();
-
     // Show invite/viewer links
     setLinks({
       invite: `/join/${roomId}`,
       delivery: `/watch/${roomId}`,
     });
+
+    console.log("✅ Setup complete, waiting for me state to update...");
   }
 
   useEffect(() => {
     if (socketUsers.length > 0) {
-      console.log("socketUsers", socketUsers);
+      console.log("📡 socketUsers", socketUsers);
     } else {
-      console.log("socketUsers List is 0");
+      console.log("📡 socketUsers List is 0");
     }
   }, [socketUsers]);
 
   useEffect(() => {
     if (debateStateUsers.length > 0) {
-      console.log("debateStateUsers", debateStateUsers);
+      console.log("🏛️ debateStateUsers", debateStateUsers);
     } else {
-      console.log("debateStateUsers List is 0");
+      console.log("🏛️ debateStateUsers List is 0");
     }
   }, [debateStateUsers]);
+
+  // Debug: Log when me changes
+  useEffect(() => {
+    if (me) {
+      console.log("👤 Me updated:", me);
+    } else {
+      console.log("👤 Me is null/undefined");
+    }
+  }, [me]);
 
   function handleNext() {
     if (!links) return;
@@ -248,6 +278,31 @@ function App() {
             </Button>
           </CardContent>
         </Card>
+
+        {/* Debug Info */}
+        {me && (
+          <Card className="mt-4 border border-blue-200 bg-blue-50">
+            <CardContent className="pt-4">
+              <div className="text-sm">
+                <p>
+                  <strong>Current User:</strong> {me.name} ({me.position})
+                </p>
+                <p>
+                  <strong>Room ID:</strong> {roomIdUuid4}
+                </p>
+                <p>
+                  <strong>Socket Users:</strong> {socketUsers.length}
+                </p>
+                <p>
+                  <strong>Debate Users:</strong> {debateStateUsers.length}
+                </p>
+                <p>
+                  <strong>Room Joined:</strong> {roomJoined ? "✅" : "❌"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Links Card */}
         {links && (

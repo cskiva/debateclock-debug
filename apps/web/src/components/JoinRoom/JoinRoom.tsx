@@ -5,7 +5,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useSocket, type SocketUser } from "@/_context/SocketContext";
 import { Loader2, MessageSquare, Users } from "lucide-react";
 
-import { useDebateState } from "@/hooks/useDebateState";
+import { useDebateState } from "@/_context/DebateContext";
 import { Button } from "../ui/button";
 import {
   Card,

@@ -76,7 +76,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
       const socketId = socketInstance.id;
       await supabase
         .from("participants")
-        .update({ peer_connection_status: "disconnected" })
+        .upsert({ peer_connection_status: "disconnected" })
         .eq("socket_id", socketId);
     });
 

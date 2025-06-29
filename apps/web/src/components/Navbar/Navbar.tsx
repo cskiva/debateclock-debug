@@ -22,17 +22,6 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase"; // Adjust import path as needed
-import { useDebateState } from "@/hooks/useDebateState";
-
-// Navigation configuration
-const navConfig = {
-  main: [
-    { label: "Debates", href: "/debates", icon: MessageSquare },
-    { label: "Tournaments", href: "/tournaments", icon: Trophy },
-    { label: "Learn", href: "/learn", icon: BookOpen },
-    { label: "Community", href: "/community", icon: Users },
-  ],
-};
 
 export default function Navbar() {
   const [latestRoomId, setLatestRoomId] = useState(null);
@@ -110,21 +99,7 @@ export default function Navbar() {
           </Link>
 
           {/* Main Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
-            {navConfig.main.map((item) => {
-              const Icon = item.icon;
-              return (
-                <a
-                  key={item.label}
-                  href={item.href}
-                  className="flex items-center space-x-1 text-slate-700 hover:text-indigo-600 transition-colors duration-200 font-medium"
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{item.label}</span>
-                </a>
-              );
-            })}
-          </div>
+          <div className="hidden md:flex items-center space-x-8"></div>
 
           {/* Current Debate Dropdowns & Auth */}
           <div className="flex items-center space-x-4">
@@ -243,21 +218,7 @@ export default function Navbar() {
               <SheetContent side="right" className="w-80">
                 <div className="flex flex-col space-y-4 mt-8">
                   {/* Mobile Main Nav */}
-                  <div className="space-y-2">
-                    {navConfig.main.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <a
-                          key={item.label}
-                          href={item.href}
-                          className="flex items-center space-x-2 px-3 py-2 text-slate-700 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-colors duration-200"
-                        >
-                          <Icon className="w-4 h-4" />
-                          <span>{item.label}</span>
-                        </a>
-                      );
-                    })}
-                  </div>
+                  <div className="space-y-2"></div>
 
                   {/* Mobile Debate Actions */}
                   <div className="border-t pt-4 space-y-2">
