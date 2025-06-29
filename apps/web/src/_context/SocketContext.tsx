@@ -157,7 +157,37 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
   const setReady = (ready: boolean) => {
     if (socket && currentRoom) {
+      console.log("✅ Setting ready state:", ready, "for room:", currentRoom);
+
+      // Optimistically update local state first
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === socket.id ? { ...user, isReady: ready } : user
+        )
+      );
+
+      // Then emit to server
       socket.emit("set-ready", { roomId: currentRoom, isReady: ready });
+
+      // Also update in Supabase
+      supabase
+        .from("participants")
+        .update({ is_ready: ready })
+        .eq("socket_id", socket.id)
+        .then(({ error }) => {
+          if (error) {
+            console.error(
+              "❌ Failed to update ready state in Supabase:",
+              error
+            );
+          } else {
+            console.log("📥 Ready state updated in Supabase");
+          }
+        });
+    } else {
+      console.error("❌ Cannot set ready: no socket or room");
+      console.log("  - socket:", !!socket);
+      console.log("  - currentRoom:", currentRoom);
     }
   };
 

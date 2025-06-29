@@ -1,27 +1,49 @@
-import { supabase } from "./supabase";
+// lib/createDebateAndSync.ts
+import { supabase } from "@/lib/supabase";
 
-export async function createDebateOnServer(debate: {
+interface CreateDebateParams {
 	topic: string;
 	hostName: string;
 	position: "for" | "against";
 	roomId: string;
-}) {
-	const { data, error } = await supabase
-		.from("debates")
-		.upsert({
-			topic: debate.topic,
-			host_name: debate.hostName,
-			host_position: debate.position,
-			room_id: debate.roomId,
-		}, {
-			onConflict: 'room_id' // Upsert based on client_id
-		})
-		.select();
+}
 
-	if (error) {
-		console.error("Error creating debate:", error);
+export async function createDebateOnServer({
+	topic,
+	hostName,
+	position,
+	roomId
+}: CreateDebateParams) {
+	try {
+		console.log("💾 Creating debate in Supabase:", { topic, hostName, position, roomId });
+
+		// 1. Create the debate record
+		const { error: debateError } = await supabase
+			.from("debates")
+			.insert({
+				room_id: roomId,
+				topic,
+				host_name: hostName,
+				host_position: position,
+				duration: 10,
+				created_at: new Date().toISOString(),
+			});
+
+		if (debateError) {
+			console.error("❌ Failed to create debate:", debateError);
+			throw new Error(`Failed to create debate: ${debateError.message}`);
+		}
+
+		console.log("✅ Debate created successfully in Supabase");
+
+		// ✅ DON'T create participant record here!
+		// The socket server will handle participant creation when joinRoom is called
+		// This prevents the duplicate entry issue
+
+		return { success: true };
+
+	} catch (error) {
+		console.error("💥 Error in createDebateOnServer:", error);
 		throw error;
 	}
-
-	return data?.[0];
 }

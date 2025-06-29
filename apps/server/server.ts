@@ -43,16 +43,21 @@ io.on("connection", (socket) => {
 			isReady: false,
 		};
 
-		// ✅ Update participant record in Supabase
 		const { error } = await supabase
 			.from("participants")
-			.update({
+			.upsert({
+				socket_id: socket.id,
 				name: user.name,
 				position: user.position,
 				room_id: roomId,
+				peer_connection_status: "connected",
+				ice_candidates: [],
+				is_ready: user.isReady,
 				created_at: new Date().toISOString(),
-			})
-			.eq("socket_id", socket.id);
+			}, {
+				onConflict: 'socket_id', // This tells upsert which column to check for conflicts
+				ignoreDuplicates: false   // Update if exists, insert if not
+			});
 
 		if (error) {
 			console.error("❌ Failed to update participant info:", error);

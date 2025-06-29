@@ -83,20 +83,23 @@ function App() {
     invite: string;
     delivery: string;
   } | null>(null);
-  const [roomJoined, setRoomJoined] = useState(false);
 
   const {
     setCurrentRoom,
     generatedRoomId: roomIdUuid4,
     generatedUserId: userIdUuid4,
     users: socketUsers,
+    isConnected,
   } = useSocket();
+
   const {
     users: debateStateUsers,
     setMe,
-    manuallyJoinRoom,
     me,
+    roomId: contextRoomId,
+    setRoomId,
   } = useDebateState();
+
   const navigate = useNavigate();
 
   // Auto-generate values on component mount for debugging
@@ -106,77 +109,62 @@ function App() {
     setPosition(Math.random() > 0.5 ? "for" : "against");
   }, []);
 
-  // Join room after me is set
-  useEffect(() => {
-    if (me && !roomJoined && links) {
-      console.log("🚀 Me is set, now joining room:", me);
-      manuallyJoinRoom();
-      setRoomJoined(true);
-    }
-  }, [me, roomJoined, links, manuallyJoinRoom]);
-
-  function handleStart() {
+  async function handleStart() {
     const roomId = roomIdUuid4;
 
-    console.log("🎯 Starting debate with roomId:", roomId);
-    console.log("🎯 User ID:", userIdUuid4);
-    console.log("🎯 Host name:", hostName);
+    console.log("🎯 Starting debate setup:");
+    console.log("  - roomId:", roomId);
+    console.log("  - userIdUuid4:", userIdUuid4);
+    console.log("  - hostName:", hostName);
+    console.log("  - position:", position);
+    console.log("  - isConnected:", isConnected);
 
-    // Create the debate in Supabase first
-    createDebateOnServer({ topic, hostName, position, roomId });
+    try {
+      // 1. Create the debate in Supabase first
+      console.log("💾 Creating debate in Supabase...");
+      await createDebateOnServer({ topic, hostName, position, roomId });
+      console.log("✅ Debate created in Supabase");
 
-    // Set the room in socket context
-    setCurrentRoom(roomId);
+      // 2. Set the room in socket context
+      setCurrentRoom(roomId);
+      setRoomId(roomId);
 
-    console.log("setting Me", hostName, position, userIdUuid4);
+      // 3. Set yourself in debate context (this will trigger auto-join)
+      const userData = {
+        id: userIdUuid4,
+        name: hostName,
+        position,
+        isReady: false,
+      };
 
-    // Set yourself in local state (this will trigger the useEffect above)
-    setMe({
-      id: userIdUuid4,
-      name: hostName,
-      position,
-      isReady: false,
-    });
+      console.log("👤 Setting me in context:", userData);
+      setMe(userData);
 
-    // Show invite/viewer links
-    setLinks({
-      invite: `/join/${roomId}`,
-      delivery: `/watch/${roomId}`,
-    });
+      // 4. Show invite/viewer links
+      setLinks({
+        invite: `/join/${roomId}`,
+        delivery: `/watch/${roomId}`,
+      });
 
-    console.log("✅ Setup complete, waiting for me state to update...");
+      console.log("✅ Setup complete! Context will handle auto-join.");
+    } catch (error) {
+      console.error("❌ Error during setup:", error);
+    }
   }
 
+  // Debug logging
   useEffect(() => {
-    if (socketUsers.length > 0) {
-      console.log("📡 socketUsers", socketUsers);
-    } else {
-      console.log("📡 socketUsers List is 0");
-    }
-  }, [socketUsers]);
-
-  useEffect(() => {
-    if (debateStateUsers.length > 0) {
-      console.log("🏛️ debateStateUsers", debateStateUsers);
-    } else {
-      console.log("🏛️ debateStateUsers List is 0");
-    }
-  }, [debateStateUsers]);
-
-  // Debug: Log when me changes
-  useEffect(() => {
-    if (me) {
-      console.log("👤 Me updated:", me);
-    } else {
-      console.log("👤 Me is null/undefined");
-    }
-  }, [me]);
+    console.log("📊 App State Update:");
+    console.log("  - socketUsers:", socketUsers.length);
+    console.log("  - debateStateUsers:", debateStateUsers.length);
+    console.log("  - me:", me);
+    console.log("  - isConnected:", isConnected);
+    console.log("  - contextRoomId:", contextRoomId);
+  }, [socketUsers, debateStateUsers, me, isConnected, contextRoomId]);
 
   function handleNext() {
     if (!links) return;
-
     const roomId = links.invite.split("/").pop() ?? "";
-
     navigate(`/lobby/${roomId}?host=true`);
   }
 
@@ -187,6 +175,33 @@ function App() {
       <div className="mx-auto max-w-2xl">
         {/* Header */}
         <Header />
+
+        {/* Connection Status */}
+        <Card
+          className={`mb-4 ${
+            isConnected
+              ? "border-green-200 bg-green-50"
+              : "border-red-200 bg-red-50"
+          }`}
+        >
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 text-sm">
+              <div
+                className={`w-3 h-3 rounded-full ${
+                  isConnected ? "bg-green-500" : "bg-red-500"
+                }`}
+              ></div>
+              <span>
+                Socket: {isConnected ? "✅ Connected" : "❌ Disconnected"}
+              </span>
+              <span className="ml-4">Room: {contextRoomId || "None"}</span>
+              <span className="ml-4">Socket Users: {socketUsers.length}</span>
+              <span className="ml-4">
+                Context Users: {debateStateUsers.length}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Main Form Card */}
         <Card className="shadow-xl border-0 bg-white/95 backdrop-blur-sm">
@@ -270,11 +285,11 @@ function App() {
             {/* Host Button */}
             <Button
               onClick={handleStart}
-              disabled={!isFormValid}
+              disabled={!isFormValid || !isConnected}
               className="w-full h-12 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Users className="w-4 h-4 mr-2" />
-              Host Debate
+              {isConnected ? "Host Debate" : "Connecting..."}
             </Button>
           </CardContent>
         </Card>
@@ -283,22 +298,30 @@ function App() {
         {me && (
           <Card className="mt-4 border border-blue-200 bg-blue-50">
             <CardContent className="pt-4">
-              <div className="text-sm">
+              <div className="text-sm space-y-1">
                 <p>
-                  <strong>Current User:</strong> {me.name} ({me.position})
+                  <strong>Me:</strong> {me.name} ({me.position})
                 </p>
                 <p>
-                  <strong>Room ID:</strong> {roomIdUuid4}
+                  <strong>Room ID:</strong> {contextRoomId}
                 </p>
                 <p>
                   <strong>Socket Users:</strong> {socketUsers.length}
                 </p>
                 <p>
-                  <strong>Debate Users:</strong> {debateStateUsers.length}
+                  <strong>Context Users:</strong> {debateStateUsers.length}
                 </p>
-                <p>
-                  <strong>Room Joined:</strong> {roomJoined ? "✅" : "❌"}
-                </p>
+
+                {socketUsers.length > 0 && (
+                  <div className="mt-2">
+                    <p>
+                      <strong>Socket Users List:</strong>
+                    </p>
+                    <pre className="text-xs bg-white p-2 rounded">
+                      {JSON.stringify(socketUsers, null, 2)}
+                    </pre>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

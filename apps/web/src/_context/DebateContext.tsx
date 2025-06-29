@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useSocket } from "@/_context/SocketContext";
 import { supabase } from "@/lib/supabase";
 import {
@@ -15,7 +16,6 @@ export interface DebateMeta {
   duration: number;
   hostName: string;
   hostPosition: "for" | "against";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   debateParticipants: any[] | null;
 }
 
@@ -34,7 +34,6 @@ interface DebateContextType {
   // User data
   me: Me | null;
   setMe: (me: Me | null) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   users: any[]; // From socket
 
   // Room management
@@ -44,7 +43,6 @@ interface DebateContextType {
 
   // Socket state
   isConnected: boolean;
-  setReady: (ready: boolean) => void;
 
   // Loading states
   loading: boolean;
@@ -54,7 +52,6 @@ interface DebateContextType {
 // Create the context
 const DebateContext = createContext<DebateContextType | undefined>(undefined);
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useDebateState() {
   const context = useContext(DebateContext);
   if (!context) {
@@ -70,12 +67,17 @@ interface DebateProviderProps {
 
 export function DebateProvider({ children }: DebateProviderProps) {
   const { roomId: roomIdFromParams } = useParams();
-  const { users, joinRoom, setReady, isConnected, generatedRoomId } =
-    useSocket();
+  const {
+    users,
+    joinRoom,
+    isConnected,
+    generatedRoomId,
+    currentRoom,
+    setCurrentRoom,
+  } = useSocket();
 
   // Persistent state
   const [debate, setDebate] = useState<DebateMeta | null>(() => {
-    // Try to restore from sessionStorage
     try {
       const saved = sessionStorage.getItem("debate");
       return saved ? JSON.parse(saved) : null;
@@ -85,7 +87,6 @@ export function DebateProvider({ children }: DebateProviderProps) {
   });
 
   const [me, setMe] = useState<Me | null>(() => {
-    // Try to restore from sessionStorage
     try {
       const saved = sessionStorage.getItem("debate-me");
       return saved ? JSON.parse(saved) : null;
@@ -95,8 +96,9 @@ export function DebateProvider({ children }: DebateProviderProps) {
   });
 
   const [roomId, setRoomId] = useState<string>(() => {
-    // Priority: params > sessionStorage > generated
+    // Priority: params > current room > sessionStorage > generated
     if (roomIdFromParams) return roomIdFromParams;
+    if (currentRoom) return currentRoom;
     try {
       const saved = sessionStorage.getItem("debate-roomId");
       return saved || generatedRoomId;
@@ -107,6 +109,7 @@ export function DebateProvider({ children }: DebateProviderProps) {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasJoinedRoom, setHasJoinedRoom] = useState(false);
 
   // Persist state to sessionStorage
   useEffect(() => {
@@ -135,6 +138,31 @@ export function DebateProvider({ children }: DebateProviderProps) {
       setRoomId(generatedRoomId);
     }
   }, [roomIdFromParams, generatedRoomId, roomId]);
+
+  // Set current room when roomId changes
+  useEffect(() => {
+    if (roomId && roomId !== currentRoom) {
+      setCurrentRoom(roomId);
+    }
+  }, [roomId, currentRoom, setCurrentRoom]);
+
+  // Auto-join room when conditions are met
+  useEffect(() => {
+    const shouldJoin = me && roomId && isConnected && !hasJoinedRoom;
+
+    console.log("🔍 Auto-join check:", {
+      me: !!me,
+      roomId: !!roomId,
+      isConnected,
+      hasJoinedRoom,
+      shouldJoin,
+    });
+
+    if (shouldJoin) {
+      console.log("🚀 Auto-joining room...");
+      manuallyJoinRoom();
+    }
+  }, [me, roomId, isConnected, hasJoinedRoom]);
 
   // Load debate data when roomId changes
   useEffect(() => {
@@ -175,7 +203,6 @@ export function DebateProvider({ children }: DebateProviderProps) {
 
         setDebate(fullDebate);
         console.log("✅ Debate loaded:", fullDebate);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         console.error("💥 Error loading debate:", err);
         setError(`Error loading debate: ${err.message}`);
@@ -192,6 +219,7 @@ export function DebateProvider({ children }: DebateProviderProps) {
     console.log("  - roomId:", roomId);
     console.log("  - me:", me);
     console.log("  - isConnected:", isConnected);
+    console.log("  - hasJoinedRoom:", hasJoinedRoom);
 
     if (!roomId) {
       console.error("❌ No room ID available");
@@ -208,24 +236,34 @@ export function DebateProvider({ children }: DebateProviderProps) {
       return;
     }
 
+    if (hasJoinedRoom) {
+      console.log("⚠️ Already joined room, skipping");
+      return;
+    }
+
     console.log("✅ Joining room with socket");
+
+    // Call joinRoom with the correct data structure the server expects
     joinRoom(roomId, "👽 manual join from DebateContext", {
       name: me.name,
       position: me.position,
-      isReady: me.isReady,
+      isReady: true,
     });
+
+    setHasJoinedRoom(true);
   };
 
-  // Clear state when needed
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const clearDebateState = () => {
-    setDebate(null);
-    setMe(null);
-    setRoomId("");
-    sessionStorage.removeItem("debate");
-    sessionStorage.removeItem("debate-me");
-    sessionStorage.removeItem("debate-roomId");
-  };
+  // Reset join state when room changes
+  useEffect(() => {
+    setHasJoinedRoom(false);
+  }, [roomId]);
+
+  // Reset join state when socket disconnects
+  useEffect(() => {
+    if (!isConnected) {
+      setHasJoinedRoom(false);
+    }
+  }, [isConnected]);
 
   const value: DebateContextType = {
     // Debate data
@@ -244,7 +282,6 @@ export function DebateProvider({ children }: DebateProviderProps) {
 
     // Socket state
     isConnected,
-    setReady,
 
     // Loading states
     loading,
@@ -254,23 +291,4 @@ export function DebateProvider({ children }: DebateProviderProps) {
   return (
     <DebateContext.Provider value={value}>{children}</DebateContext.Provider>
   );
-}
-
-// Debug hook to see context state
-export function useDebateDebug() {
-  const context = useDebateState();
-
-  useEffect(() => {
-    console.log("🔍 Debate Context State:", {
-      debate: context.debate,
-      me: context.me,
-      roomId: context.roomId,
-      users: context.users,
-      isConnected: context.isConnected,
-      loading: context.loading,
-      error: context.error,
-    });
-  }, [context]);
-
-  return context;
 }
