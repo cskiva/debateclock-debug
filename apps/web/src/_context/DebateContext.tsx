@@ -10,13 +10,35 @@ import {
 } from "react";
 import { useParams } from "react-router-dom";
 
+// ✅ Updated interfaces to match new schema
 export interface DebateMeta {
+  id?: number;
+  room_id: string;
   topic: string;
-  roomId: string;
+  host_name: string;
+  host_position: "for" | "against";
   duration: number;
-  hostName: string;
-  hostPosition: "for" | "against";
-  debateParticipants: any[] | null;
+  status: "waiting" | "active" | "completed" | "cancelled";
+  created_at: string;
+  updated_at?: string;
+  participant_count?: number; // From view
+  ready_count?: number; // From view
+  participants?: ParticipantData[]; // When loaded separately
+}
+
+export interface ParticipantData {
+  id: number;
+  socket_id: string;
+  room_id: string;
+  name: string;
+  position: "for" | "against";
+  peer_connection_status: "connected" | "disconnected" | "reconnecting";
+  ice_candidates: any[];
+  is_ready: boolean;
+  is_host: boolean;
+  joined_at: string;
+  created_at: string;
+  updated_at?: string;
 }
 
 export interface Me {
@@ -47,6 +69,9 @@ interface DebateContextType {
   // Loading states
   loading: boolean;
   error: string | null;
+
+  // Participants from database
+  dbParticipants: ParticipantData[];
 }
 
 // Create the context
@@ -76,16 +101,10 @@ export function DebateProvider({ children }: DebateProviderProps) {
     setCurrentRoom,
   } = useSocket();
 
-  // Persistent state
-  const [debate, setDebate] = useState<DebateMeta | null>(() => {
-    try {
-      const saved = sessionStorage.getItem("debate");
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  // 🔥 FIXED: Remove sessionStorage initialization for debate
+  const [debate, setDebate] = useState<DebateMeta | null>(null);
 
+  // Keep sessionStorage for user data (me) as it's user-specific
   const [me, setMe] = useState<Me | null>(() => {
     try {
       const saved = sessionStorage.getItem("debate-me");
@@ -95,45 +114,24 @@ export function DebateProvider({ children }: DebateProviderProps) {
     }
   });
 
+  // 🔥 FIXED: Always prioritize URL params for roomId
   const [roomId, setRoomId] = useState<string>(() => {
-    // Priority: params > current room > sessionStorage > generated
+    // Priority: params > generated (remove sessionStorage dependency)
     if (roomIdFromParams) return roomIdFromParams;
-    if (currentRoom) return currentRoom;
-    try {
-      const saved = sessionStorage.getItem("debate-roomId");
-      return saved || generatedRoomId;
-    } catch {
-      return generatedRoomId;
-    }
+    return generatedRoomId;
   });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasJoinedRoom, setHasJoinedRoom] = useState(false);
+  const [dbParticipants, setDbParticipants] = useState<ParticipantData[]>([]);
 
-  // Persist state to sessionStorage
-  useEffect(() => {
-    if (debate) {
-      sessionStorage.setItem("debate", JSON.stringify(debate));
-    }
-  }, [debate]);
-
-  useEffect(() => {
-    if (me) {
-      sessionStorage.setItem("debate-me", JSON.stringify(me));
-    }
-  }, [me]);
-
-  useEffect(() => {
-    if (roomId) {
-      sessionStorage.setItem("debate-roomId", roomId);
-    }
-  }, [roomId]);
-
-  // Update roomId when params or generated ID changes
+  // Update roomId when params change
   useEffect(() => {
     if (roomIdFromParams) {
       setRoomId(roomIdFromParams);
+      // 🔥 FIXED: Clear debate state when room changes
+      setDebate(null);
     } else if (generatedRoomId && !roomId) {
       setRoomId(generatedRoomId);
     }
@@ -164,7 +162,7 @@ export function DebateProvider({ children }: DebateProviderProps) {
     }
   }, [me, roomId, isConnected, hasJoinedRoom]);
 
-  // Load debate data when roomId changes
+  // 🔥 FIXED: Always fetch debate from database when roomId changes
   useEffect(() => {
     if (!roomId) return;
 
@@ -175,8 +173,9 @@ export function DebateProvider({ children }: DebateProviderProps) {
       try {
         console.log("🔍 Loading debate for room:", roomId);
 
+        // Load debate with participant count using the view
         const { data: debateData, error: debateDataError } = await supabase
-          .from("debates")
+          .from("debates_with_participants")
           .select("*")
           .eq("room_id", roomId)
           .single();
@@ -187,21 +186,54 @@ export function DebateProvider({ children }: DebateProviderProps) {
           return;
         }
 
-        const { data: roomUsers } = await supabase
-          .from("participants")
-          .select("*")
-          .eq("room_id", roomId);
+        // Load participants separately for detailed info
+        const { data: participantsData, error: participantsError } =
+          await supabase
+            .from("participants")
+            .select(
+              `
+            id,
+            socket_id,
+            room_id,
+            name,
+            position,
+            peer_connection_status,
+            ice_candidates,
+            is_ready,
+            is_host,
+            joined_at,
+            created_at,
+            updated_at
+          `
+            )
+            .eq("room_id", roomId)
+            .order("joined_at", { ascending: true });
+
+        if (participantsError) {
+          console.warn("⚠️ Could not load participants:", participantsError);
+        }
 
         const fullDebate: DebateMeta = {
+          id: debateData.id,
+          room_id: debateData.room_id,
           topic: debateData.topic,
-          roomId: debateData.room_id,
-          duration: debateData.duration ?? 10,
-          hostName: debateData.host_name,
-          hostPosition: debateData.host_position,
-          debateParticipants: roomUsers ?? [],
+          host_name: debateData.host_name,
+          host_position: debateData.host_position,
+          duration: debateData.duration || 10,
+          status: debateData.status || "waiting",
+          created_at: debateData.created_at,
+          updated_at: debateData.updated_at,
+          participant_count: debateData.participant_count || 0,
+          ready_count: debateData.ready_count || 0,
+          participants: (participantsData as ParticipantData[]) || [],
         };
 
         setDebate(fullDebate);
+        setDbParticipants((participantsData as ParticipantData[]) || []);
+
+        // 🔥 FIXED: Only cache to sessionStorage AFTER fetching from database
+        sessionStorage.setItem("debate", JSON.stringify(fullDebate));
+
         console.log("✅ Debate loaded:", fullDebate);
       } catch (err: any) {
         console.error("💥 Error loading debate:", err);
@@ -212,7 +244,55 @@ export function DebateProvider({ children }: DebateProviderProps) {
     }
 
     loadDebate();
+  }, [roomId]); // This will re-run whenever roomId changes
+
+  // 🔥 FIXED: Periodically refresh participant data
+  useEffect(() => {
+    if (!roomId) return;
+
+    const refreshParticipants = async () => {
+      try {
+        const { data: participantsData } = await supabase
+          .from("participants")
+          .select(
+            `
+            id,
+            socket_id,
+            room_id,
+            name,
+            position,
+            peer_connection_status,
+            ice_candidates,
+            is_ready,
+            is_host,
+            joined_at,
+            created_at,
+            updated_at
+          `
+          )
+          .eq("room_id", roomId)
+          .eq("peer_connection_status", "connected")
+          .order("joined_at", { ascending: true });
+
+        if (participantsData) {
+          setDbParticipants(participantsData as ParticipantData[]);
+        }
+      } catch (error) {
+        console.warn("Could not refresh participants:", error);
+      }
+    };
+
+    // Refresh every 30 seconds
+    const interval = setInterval(refreshParticipants, 30000);
+    return () => clearInterval(interval);
   }, [roomId]);
+
+  // 🔥 FIXED: Save user data to sessionStorage when it changes
+  useEffect(() => {
+    if (me) {
+      sessionStorage.setItem("debate-me", JSON.stringify(me));
+    }
+  }, [me]);
 
   const manuallyJoinRoom = () => {
     console.log("🚀 manuallyJoinRoom called:");
@@ -286,6 +366,9 @@ export function DebateProvider({ children }: DebateProviderProps) {
     // Loading states
     loading,
     error,
+
+    // Database participants
+    dbParticipants,
   };
 
   return (

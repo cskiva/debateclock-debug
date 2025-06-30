@@ -6,6 +6,7 @@ import { useSocket, type SocketUser } from "@/_context/SocketContext";
 import { Loader2, MessageSquare, Users } from "lucide-react";
 
 import { useDebateState } from "@/_context/DebateContext";
+import { supabase } from "@/lib/supabase";
 import { Button } from "../ui/button";
 import {
   Card,
@@ -28,31 +29,98 @@ function JoinRoom() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { isConnected, users, generatedUserId: userIdUuid4 } = useSocket();
-  const { setMe } = useDebateState();
+  const { setMe, debate } = useDebateState();
 
   const { users: debateStateUsers, ...debateInfo } = useDebateState();
 
   const [name, setName] = useState("");
   const [position, setPosition] = useState<"for" | "against">("against");
   const [isJoining, setIsJoining] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleJoin = async () => {
     if (!roomId || !name.trim()) return;
 
     const trimmedName = name.trim();
-
-    setMe({
-      id: userIdUuid4,
-      name: trimmedName,
-      position,
-      isReady: false,
-    });
-
     setIsJoining(true);
-    navigate(`/lobby/${roomId}`);
+    setError(null);
+
+    try {
+      console.log("🚀 Creating participant in database...");
+
+      // First, verify the debate exists
+      const { data: existingDebate, error: debateError } = await supabase
+        .from("debates")
+        .select("id, room_id, status")
+        .eq("room_id", roomId)
+        .single();
+
+      if (debateError || !existingDebate) {
+        throw new Error("Debate room not found");
+      }
+
+      if (
+        existingDebate.status === "completed" ||
+        existingDebate.status === "cancelled"
+      ) {
+        throw new Error("This debate has already ended");
+      }
+
+      // Check if user already exists in this room
+      const { data: existingParticipant } = await supabase
+        .from("participants")
+        .select("id")
+        .eq("room_id", roomId)
+        .eq("name", trimmedName)
+        .single();
+
+      if (existingParticipant) {
+        throw new Error(
+          "A participant with this name already exists in this room"
+        );
+      }
+
+      // Create participant record in database
+      const { data: participantData, error: participantError } = await supabase
+        .from("participants")
+        .insert({
+          socket_id: userIdUuid4, // Using the generated UUID as socket_id
+          room_id: roomId,
+          name: trimmedName,
+          position: position,
+          peer_connection_status: "disconnected", // Will be updated when socket connects
+          ice_candidates: [],
+          is_ready: false,
+          is_host: false,
+        })
+        .select()
+        .single();
+
+      if (participantError) {
+        console.error("❌ Failed to create participant:", participantError);
+        throw new Error(`Failed to join room: ${participantError.message}`);
+      }
+
+      console.log("✅ Participant created:", participantData);
+
+      // Set user data in context (this will trigger auto-join via socket)
+      setMe({
+        id: userIdUuid4,
+        name: trimmedName,
+        position,
+        isReady: false,
+      });
+
+      console.log("✅ Navigating to lobby...");
+      navigate(`/lobby/${roomId}`);
+    } catch (err: any) {
+      console.error("❌ Error joining room:", err);
+      setError(err.message || "Failed to join room");
+      setIsJoining(false);
+    }
   };
 
-  const isFormValid = name.trim() && isConnected;
+  const isFormValid = name.trim() && isConnected && !isJoining;
   const hostPosition = users.find((user: SocketUser) => user.position === "for")
     ? "for"
     : users.find((user: SocketUser) => user.position === "against")
@@ -77,8 +145,17 @@ function JoinRoom() {
           </p>
         </div>
 
+        {/* Error Alert */}
+        {error && (
+          <Card className="mb-6 border-red-200 bg-red-50">
+            <CardContent className="pt-4">
+              <p className="text-red-800 text-sm">{error}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Debate Info Card */}
-        {debateInfo && (
+        {(debateInfo.debate || debate) && (
           <Card className="mb-6 shadow-xl border-0 bg-white/95 backdrop-blur-sm">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-xl">
@@ -88,11 +165,15 @@ function JoinRoom() {
             </CardHeader>
             <CardContent>
               <p className="text-lg font-medium text-slate-900 mb-2">
-                {debateInfo.topic}
+                {debateInfo.debate?.topic || debate?.topic}
               </p>
               <p className="text-sm text-slate-600">
-                Hosted by: <strong>{debateInfo.hostName}</strong>
+                Hosted by:{" "}
+                <strong>
+                  {debateInfo.debate?.host_name || debate?.host_name}
+                </strong>
               </p>
+              <p className="text-xs text-slate-500 mt-2">Room ID: {roomId}</p>
             </CardContent>
           </Card>
         )}
@@ -182,7 +263,7 @@ function JoinRoom() {
             {/* Join Button */}
             <Button
               onClick={handleJoin}
-              disabled={!isFormValid || isJoining}
+              disabled={!isFormValid}
               className="w-full h-12 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isJoining ? (

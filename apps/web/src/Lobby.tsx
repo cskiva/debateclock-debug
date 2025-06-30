@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, Clock, Users } from "lucide-react";
+import { CheckCircle2, Clock, Crown, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -15,7 +15,7 @@ function Lobby() {
   const queryParams = new URLSearchParams(location.search);
   const isHost = queryParams.get("host") === "true";
 
-  // Get debate state - try multiple sources
+  // ✅ Get debate state with new schema data
   const {
     debate,
     me,
@@ -23,6 +23,7 @@ function Lobby() {
     error: contextError,
     setRoomId,
     manuallyJoinRoom,
+    dbParticipants, // New: database participants
   } = useDebateState();
 
   const { users, leaveRoom, isConnected, setReady } = useSocket();
@@ -35,7 +36,7 @@ function Lobby() {
 
   // Ensure room ID is set in context when we navigate to lobby
   useEffect(() => {
-    if (roomId && !debate?.roomId) {
+    if (roomId && !debate?.room_id) {
       console.log("🔧 Setting room ID in context:", roomId);
       setRoomId(roomId);
     }
@@ -49,14 +50,27 @@ function Lobby() {
     }
   }, [me, roomId, isConnected, users.length, manuallyJoinRoom]);
 
+  // Calculate ready state from socket users (real-time data)
   const readyUsers = users.filter((user) => user.isReady);
-  const canStart = users.length >= 2 && readyUsers.length === users.length;
-  const isReady = me?.isReady;
+  const totalUsers = users.length;
+  const readyCount = readyUsers.length;
+  const canStart = totalUsers >= 2 && readyCount === totalUsers;
 
-  // Get debate info - fallback to derived values if context doesn't have it
+  // Check if current user is ready (from socket users, not local me state)
+  const currentSocketUser = users.find((u) => u.id === me?.id);
+  const isReady = currentSocketUser?.isReady || false;
+
+  // ✅ Get debate info from new schema
   const topic = debate?.topic || "Loading topic...";
   const duration = debate?.duration || 10;
-  const hostName = debate?.hostName || (isHost ? me?.name : "Unknown Host");
+  const hostName = debate?.host_name || (isHost ? me?.name : "Unknown Host");
+  const debateStatus = debate?.status || "waiting";
+
+  // ✅ Use database participants for additional info
+  const connectedDbParticipants = dbParticipants.filter(
+    (p) => p.peer_connection_status === "connected"
+  );
+  const hostParticipant = dbParticipants.find((p) => p.is_host);
 
   // Get webcam stream
   useEffect(() => {
@@ -77,7 +91,6 @@ function Lobby() {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
-          // Defer navigation to avoid React state update in render phase
           setTimeout(() => {
             navigate(`/debate/${roomId}`);
           }, 0);
@@ -101,12 +114,17 @@ function Lobby() {
       : "text-green-600";
 
   const handleReadyClick = () => {
+    console.log("🎯 Ready button clicked, current state:", {
+      isReady,
+      currentSocketUser,
+      me,
+    });
     setReady(true);
   };
 
   useEffect(() => {
     return () => {
-      leaveRoom(); // this will emit the leave event and clean up
+      leaveRoom();
     };
   }, [leaveRoom]);
 
@@ -114,57 +132,96 @@ function Lobby() {
   useEffect(() => {
     console.log("🏛️ Lobby Debug Info:", {
       roomId,
-      debate,
-      me,
-      users: users.length,
+      debate: !!debate,
+      me: me?.name,
+      socketUsers: users.length,
+      dbParticipants: dbParticipants.length,
+      readyUsers: readyCount,
+      totalUsers,
+      canStart,
       isConnected,
       contextLoading,
       contextError,
       topic,
       hostName,
+      debateStatus,
+      currentSocketUser,
+      isReady,
     });
   }, [
     roomId,
     debate,
     me,
     users.length,
+    dbParticipants.length,
+    readyCount,
+    totalUsers,
+    canStart,
     isConnected,
     contextLoading,
     contextError,
     topic,
     hostName,
+    debateStatus,
+    currentSocketUser,
+    isReady,
   ]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4 md:p-8">
-      {/* Debug Info */}
+      {/* ✅ Enhanced Debug Info with new schema data */}
       <div className="bg-yellow-100 text-yellow-800 p-4 rounded mb-4 text-sm">
         <p>
           <strong>Debug Info:</strong>
         </p>
         <p>Room ID: {roomId}</p>
         <p>Debate loaded: {debate ? "✅" : "❌"}</p>
+        <p>Debate status: {debateStatus}</p>
         <p>Me: {me ? `${me.name} (${me.position})` : "❌ Not set"}</p>
         <p>Socket connected: {isConnected ? "✅" : "❌"}</p>
-        <p>Socket users: {users.length}</p>
+        <p>Socket users: {totalUsers}</p>
+        <p>DB participants: {dbParticipants.length}</p>
+        <p>Connected DB participants: {connectedDbParticipants.length}</p>
+        <p>
+          Ready users: {readyCount}/{totalUsers}
+        </p>
+        <p>Can start: {canStart ? "✅" : "❌"}</p>
+        <p>My ready state: {isReady ? "✅" : "❌"}</p>
         <p>Context loading: {contextLoading ? "⏳" : "✅"}</p>
         <p>Context error: {contextError || "None"}</p>
-
-        {debate && (
-          <div className="mt-2 p-2 bg-yellow-200 rounded">
-            <p>
-              <strong>Debate Data:</strong>
-            </p>
-            <pre className="text-xs">{JSON.stringify(debate, null, 2)}</pre>
-          </div>
-        )}
+        <p>Host: {hostParticipant?.name || hostName}</p>
 
         {users.length > 0 && (
           <div className="mt-2 p-2 bg-blue-100 rounded">
             <p>
               <strong>Socket Users:</strong>
             </p>
-            <pre className="text-xs">{JSON.stringify(users, null, 2)}</pre>
+            <div className="text-xs space-y-1">
+              {users.map((user, index) => (
+                <div key={user.id}>
+                  {index + 1}. {user.name} ({user.position}) -{" "}
+                  {user.isReady ? "✅ Ready" : "❌ Not Ready"}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {dbParticipants.length > 0 && (
+          <div className="mt-2 p-2 bg-purple-100 rounded">
+            <p>
+              <strong>DB Participants:</strong>
+            </p>
+            <div className="text-xs space-y-1">
+              {dbParticipants.map((participant, index) => (
+                <div key={participant.id}>
+                  {index + 1}. {participant.name} ({participant.position}) -
+                  {participant.is_host && " 👑 Host"} -
+                  {participant.peer_connection_status} -
+                  {participant.is_ready ? "✅ Ready" : "❌ Not Ready"}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -177,8 +234,25 @@ function Lobby() {
           <p className="text-slate-600">
             {canStart
               ? "All participants ready!"
-              : "Waiting for participants..."}
+              : `Waiting for participants... (${totalUsers}/2 joined)`}
           </p>
+
+          {/* ✅ Show debate status */}
+          <div className="mt-2">
+            <span
+              className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                debateStatus === "waiting"
+                  ? "bg-yellow-100 text-yellow-800"
+                  : debateStatus === "active"
+                  ? "bg-green-100 text-green-800"
+                  : debateStatus === "completed"
+                  ? "bg-blue-100 text-blue-800"
+                  : "bg-gray-100 text-gray-800"
+              }`}
+            >
+              Status: {debateStatus}
+            </span>
+          </div>
 
           {contextLoading && (
             <p className="text-amber-600 mt-2">⏳ Loading debate info...</p>
@@ -202,11 +276,19 @@ function Lobby() {
               {topic}
             </p>
             {hostName && (
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-slate-600 flex items-center gap-1">
+                <Crown className="w-4 h-4" />
                 Hosted by: <strong>{hostName}</strong>
+                {hostParticipant && (
+                  <span className="text-xs text-slate-500">
+                    ({hostParticipant.position})
+                  </span>
+                )}
               </p>
             )}
-            <p className="text-xs text-slate-500 mt-1">Room ID: {roomId}</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Room ID: {roomId} • Duration: {duration} minutes
+            </p>
           </CardContent>
         </Card>
 
@@ -248,17 +330,28 @@ function Lobby() {
                   </div>
                 </>
               ) : (
-                <div className="text-2xl font-bold mb-2">
-                  {JSON.stringify(me)}/{debate?.debateParticipants?.length}{" "}
-                  Ready
-                </div>
+                <>
+                  <div className="text-2xl font-bold mb-2">
+                    {readyCount}/{totalUsers} Ready
+                  </div>
+                  {totalUsers < 2 && (
+                    <p className="text-amber-100 text-sm">
+                      Need at least 2 participants to start
+                    </p>
+                  )}
+                  {totalUsers >= 2 && readyCount < totalUsers && (
+                    <p className="text-amber-100 text-sm">
+                      Waiting for all participants to be ready
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </CardContent>
         </Card>
 
         {/* Ready Button */}
-        {!isReady && streamReady && me && (
+        {!isReady && streamReady && me && totalUsers > 0 && (
           <div className="text-center mb-6">
             <Button
               onClick={handleReadyClick}
@@ -266,6 +359,18 @@ function Lobby() {
             >
               <CheckCircle2 className="w-4 h-4 mr-2" /> I'm Ready
             </Button>
+          </div>
+        )}
+
+        {/* Already Ready State */}
+        {isReady && (
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-100 text-green-800 rounded-lg">
+              <CheckCircle2 className="w-5 h-5" />
+              <span className="font-medium">
+                You're ready! Waiting for others...
+              </span>
+            </div>
           </div>
         )}
 
@@ -284,14 +389,14 @@ function Lobby() {
             </p>
             {me && (
               <p className="text-xs text-slate-600">
-                Position: {me.position} | Ready: {me.isReady ? "✅" : "❌"}
+                Position: {me.position} | Ready: {isReady ? "✅" : "❌"}
               </p>
             )}
           </div>
 
           {/* Opponent Video or Placeholder */}
           <div className="bg-white rounded shadow p-4 flex flex-col items-center justify-center">
-            {users.length > 1 ? (
+            {totalUsers > 1 ? (
               <>
                 <video
                   ref={remoteVideoRef}
@@ -310,50 +415,65 @@ function Lobby() {
           </div>
         </div>
 
-        {/* Participants List */}
-        {users.length > 0 && (
+        {/* ✅ Enhanced Participants List with DB data */}
+        {totalUsers > 0 && (
           <Card className="mt-6 bg-white/95 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="w-5 h-5" />
-                Participants ({users.length})
+                Participants ({totalUsers})
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {users.map((user) => (
-                  <div
-                    key={user.id}
-                    className="flex items-center justify-between p-2 bg-slate-50 rounded"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-3 h-3 rounded-full ${
-                          user.position === "for"
-                            ? "bg-green-500"
-                            : "bg-red-500"
-                        }`}
-                      />
-                      <span className="font-medium">{user.name}</span>
-                      <span className="text-sm text-slate-600">
-                        ({user.position})
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {user.isReady ? (
-                        <span className="text-green-600 text-sm font-medium flex items-center gap-1">
-                          <CheckCircle2 className="w-4 h-4" />
-                          Ready
+                {users.map((user) => {
+                  const dbParticipant = dbParticipants.find(
+                    (p) => p.name === user.name && p.position === user.position
+                  );
+                  return (
+                    <div
+                      key={user.id}
+                      className="flex items-center justify-between p-2 bg-slate-50 rounded"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            user.position === "for"
+                              ? "bg-green-500"
+                              : "bg-red-500"
+                          }`}
+                        />
+                        <span className="font-medium flex items-center gap-1">
+                          {user.name}
+                          {dbParticipant?.is_host && (
+                            <Crown className="w-4 h-4 text-yellow-500" />
+                          )}
                         </span>
-                      ) : (
-                        <span className="text-amber-600 text-sm flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          Not Ready
+                        <span className="text-sm text-slate-600">
+                          ({user.position})
                         </span>
-                      )}
+                        {user.id === me?.id && (
+                          <span className="text-xs text-blue-600 font-medium">
+                            (You)
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {user.isReady ? (
+                          <span className="text-green-600 text-sm font-medium flex items-center gap-1">
+                            <CheckCircle2 className="w-4 h-4" />
+                            Ready
+                          </span>
+                        ) : (
+                          <span className="text-amber-600 text-sm flex items-center gap-1">
+                            <Clock className="w-4 h-4" />
+                            Not Ready
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
